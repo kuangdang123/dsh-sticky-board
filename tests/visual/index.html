@@ -131,6 +131,7 @@
     var module = registration.factory(function (name) {
       if (name === 'react') return window.React
       if (name === 'react-dom/client') return window.ReactDOM
+      if (name === 'react-dom') return window.ReactDOM
       throw new Error('unexpected require: ' + name)
     })
     var registered = []
@@ -273,6 +274,18 @@
     if (scene === 'trash') store.actions.setView('trash')
     if (scene === 'tasks') store.actions.setView('tasks')
     if (scene === 'sheet' && designNote) store.actions.setDetail(designNote.id)
+    if (scene === 'floatcomments' && designNote) {
+      store.actions.setOpen(false)
+      store.actions.addFloater(designNote.id, { x: 300, y: 64, w: 420, h: 420 })
+    }
+    // `?scene=menu` opens the sort dropdown so the screenshot can show the
+    // themed popover without a synthetic click from the capture script.
+    if (scene === 'menu') {
+      setTimeout(function () {
+        var trigger = document.querySelector('.dsn-filters .dsn-select')
+        if (trigger) trigger.click()
+      }, 300)
+    }
     var size = String(params.get('panel') || '').split('x')
     if (size.length === 2) {
       var panelWidth = parseInt(size[0], 10)
@@ -575,6 +588,12 @@
     // so `chrome --headless --dump-dom` can be used as a tiny style inspector.
     if (params.get('diag') === '1') {
       setTimeout(function () {
+        // `?menu=1` opens the sort dropdown first so its portal can be measured.
+        if (params.get('menu') === '1') {
+          var trigger = document.querySelector('.dsn-filters .dsn-select')
+          if (trigger) trigger.click()
+        }
+        setTimeout(function () {
         var selectors = [
           '.dsn-panel', '.dsn-header', '.dsn-header-title', '.dsn-body',
           '.dsn-tabs', '.dsn-tab', '.dsn-tab.is-active', '.dsn-tab-count',
@@ -587,6 +606,10 @@
           '.dsn-content', '.dsn-content li', '.dsn-content table th',
           '.dsn-content table td', '.dsn-content pre', '.dsn-content code',
           '.dsn-chip-layer', '.dsn-capture-chip', '.dsn-surface', '.dsn-surface-btn',
+          '.dsn-filters', '.dsn-filter-toggle', '.dsn-select',
+          '.dsn-menu', '.dsn-menu-item', '.dsn-menu-item.is-selected',
+          '.dsn-prio--pick', '.dsn-prio--normal', '.dsn-prio--urgent',
+          '.dsn-comments', '.dsn-comment-body', '.dsn-comment-input', '.dsn-comment-form', '.dsn-float-body', '.dsn-sheet-card',
         ]
         var tokens = (window.__DSH_STICKY_BOARD__ && window.__DSH_STICKY_BOARD__.TOKENS) || []
         var bodyStyle = window.getComputedStyle(document.body)
@@ -614,6 +637,7 @@
         diag.id = 'harness-diag'
         diag.textContent = JSON.stringify({ theme: theme, tokens: resolved, rows: rows }, null, 1)
         document.body.appendChild(diag)
+        }, params.get('menu') === '1' ? 260 : 0)
       }, 400)
     }
   }

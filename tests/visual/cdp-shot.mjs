@@ -117,6 +117,17 @@ async function main() {
     return false
   })()`)
   await sleep(700)
+  // Optional probe: `--eval=<expression>` prints a JSON result before the
+  // screenshot, which makes it a one-liner inspector for store/DOM questions.
+  const probe = arg('eval', '')
+  if (probe) {
+    try {
+      console.log('eval:', JSON.stringify(await evaluate(probe), null, 1))
+    } catch (error) {
+      console.log('eval failed:', error.message)
+    }
+  }
+
   // Optional real-input click: `Input.dispatchMouseEvent` goes through the
   // browser's own input pipeline, so pointer capture / preventDefault behave
   // exactly as they do for a human — unlike `element.click()` in a unit test.
