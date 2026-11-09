@@ -31,17 +31,13 @@
     "./client": "./client.js",
     "./locale/en.json": "./locale/en.json",
     "./locale/zh.json": "./locale/zh.json",
-    "./icon": "./icon.svg",
-    "./assets/*": "./assets/*",
-    "./screenshots.json": "./screenshots.json"
+    "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
     "client.js",
     "cordis.patch.yml",
     "icon.svg",
-    "assets",
-    "screenshots.json",
     "locale",
     "README.md",
     "README.en.md",
