@@ -853,6 +853,54 @@ floatHost.remove()
 menuHost.remove()
 store.actions.purgeNote(floatNoteId)
 
+// --------------------------------------- composer saves and clears ----------
+store.actions.setView('board')
+flushSync(() => {})
+const composerEditor = document.querySelector('.dsn-composer [contenteditable="true"]')
+check('the composer editor is mounted in the board view', !!composerEditor)
+if (composerEditor) {
+  const beforeSave = store.getSnapshot().notes.length
+  composerEditor.focus()
+  composerEditor.innerHTML = '<p>随手记一条</p>'
+  flushSync(() => {
+    composerEditor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  })
+  check('the composer keeps focus while typing', document.activeElement === composerEditor,
+    String(document.activeElement && document.activeElement.className))
+  // Let the editor's debounce hand the draft to React, the way typing does.
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  flushSync(() => {
+    composerEditor.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+    }))
+  })
+  const savedCount = store.getSnapshot().notes.length
+  check('Ctrl+Enter in the composer stores a note', savedCount === beforeSave + 1,
+    beforeSave + ' -> ' + savedCount)
+  check('the stored note carries the composer text', text().indexOf('随手记一条') >= 0)
+  check('saving clears the composer even though it keeps focus',
+    document.activeElement === composerEditor, 'focus moved away')
+  check('the composer DOM is empty after saving',
+    composerEditor.textContent.trim() === '' && composerEditor.innerHTML === '',
+    JSON.stringify(composerEditor.innerHTML))
+  check('the empty composer shows its placeholder again',
+    composerEditor.getAttribute('data-empty') === 'true')
+  const draftNote = store.getSnapshot().notes.filter((note) => String(note.text).indexOf('随手记一条') >= 0)[0]
+  check('the composer draft became exactly one note', !!draftNote)
+  if (draftNote) store.actions.purgeNote(draftNote.id)
+}
+
+// --------------------------------------- one way to add a section ----------
+const addLabel = ctx.locale.bind()('section.add')
+const addControls = Array.prototype.slice
+  .call(document.querySelectorAll('button'))
+  .filter((node) => node.getAttribute('aria-label') === addLabel)
+check('exactly one control creates a section', addControls.length === 1,
+  addControls.length + ': ' + addControls.map((node) => node.className).join(' | '))
+check('the remaining add-section control lives in the rail',
+  addControls.length === 1 && addControls[0].className.indexOf('is-add') >= 0,
+  addControls.map((node) => node.className).join(' | '))
+
 store.actions.purgeNote(extraId)
 check('the temporary note is gone', !noteOf(extraId))
 

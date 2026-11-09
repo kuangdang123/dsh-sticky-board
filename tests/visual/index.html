@@ -278,6 +278,13 @@
       store.actions.setOpen(false)
       store.actions.addFloater(designNote.id, { x: 300, y: 64, w: 420, h: 420 })
     }
+    // `?scene=floats` spreads two detached windows so a screenshot shows both
+    // at once instead of the default cascade covering the first one.
+    if (scene === 'floats' && designNote && tableNote) {
+      store.actions.setOpen(false)
+      store.actions.addFloater(designNote.id, { x: 236, y: 40, w: 436, h: 400 })
+      store.actions.addFloater(tableNote.id, { x: 270, y: 468, w: 436, h: 380 })
+    }
     // `?scene=menu` opens the sort dropdown so the screenshot can show the
     // themed popover without a synthetic click from the capture script.
     if (scene === 'menu') {
