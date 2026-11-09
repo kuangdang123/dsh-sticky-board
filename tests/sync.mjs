@@ -186,6 +186,7 @@ runInThisContext(readFileSync(join(root, 'client.js'), 'utf8'), { filename: 'cli
 const mod = entry.factory((name) => {
   if (name === 'react') return React
   if (name === 'react-dom/client') return ReactDOMClient
+  if (name === 'react-dom') return requireFromRoot(reactDomPath)
   throw new Error('unexpected require: ' + name)
 })
 

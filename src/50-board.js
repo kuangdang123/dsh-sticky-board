@@ -308,28 +308,29 @@ function BoardToolbar(props) {
   var filters = props.view === 'trash'
     ? null
     : h('div', { className: 'dsn-filters' },
-      h('span', { className: 'dsn-filter-group', title: t('filter.sort') },
+      props.view === 'tasks' ? null : h('span', { className: 'dsn-filter-group', title: t('filter.sort') },
         h('span', { className: 'dsn-filter-label' }, t('filter.sort')),
-        h('select', {
-          className: 'dsn-filter-select',
+        h(DSN.SelectMenu, {
+          t: t,
           value: props.sort,
-          'aria-label': t('filter.sort'),
-          onChange: function (event) { props.onSort(event.target.value) },
-        },
-          h('option', { value: 'time' }, t('filter.sortTime')),
-          h('option', { value: 'priority' }, t('filter.sortPriority')))),
+          ariaLabel: t('filter.sort'),
+          onChange: function (value) { props.onSort(value) },
+          options: [
+            { value: 'time', label: t('filter.sortTime') },
+            { value: 'priority', label: t('filter.sortPriority') },
+          ],
+        })),
       h('span', { className: 'dsn-filter-group', title: t('filter.priority') },
         h('span', { className: 'dsn-filter-label' }, t('filter.priority')),
-        h('select', {
-          className: 'dsn-filter-select',
+        h(DSN.SelectMenu, {
+          t: t,
           value: props.priorityFilter,
-          'aria-label': t('filter.priority'),
-          onChange: function (event) { props.onPriorityFilter(event.target.value) },
-        },
-          h('option', { value: 'all' }, t('filter.all')),
-          DSN.PRIORITIES.map(function (name) {
-            return h('option', { key: name, value: name }, t('priority.' + name))
-          }))),
+          ariaLabel: t('filter.priority'),
+          onChange: function (value) { props.onPriorityFilter(value) },
+          options: [{ value: 'all', label: t('filter.all') }].concat(DSN.PRIORITIES.map(function (name) {
+            return { value: name, label: t('priority.' + name), dot: DSN.priorityMeta(name).token }
+          })),
+        })),
       h('button', {
         type: 'button',
         className: 'dsn-filter-toggle' + (props.hideDone ? ' is-on' : ''),

@@ -5421,28 +5421,29 @@ function BoardToolbar(props) {
   var filters = props.view === 'trash'
     ? null
     : h('div', { className: 'dsn-filters' },
-      h('span', { className: 'dsn-filter-group', title: t('filter.sort') },
+      props.view === 'tasks' ? null : h('span', { className: 'dsn-filter-group', title: t('filter.sort') },
         h('span', { className: 'dsn-filter-label' }, t('filter.sort')),
-        h('select', {
-          className: 'dsn-filter-select',
+        h(DSN.SelectMenu, {
+          t: t,
           value: props.sort,
-          'aria-label': t('filter.sort'),
-          onChange: function (event) { props.onSort(event.target.value) },
-        },
-          h('option', { value: 'time' }, t('filter.sortTime')),
-          h('option', { value: 'priority' }, t('filter.sortPriority')))),
+          ariaLabel: t('filter.sort'),
+          onChange: function (value) { props.onSort(value) },
+          options: [
+            { value: 'time', label: t('filter.sortTime') },
+            { value: 'priority', label: t('filter.sortPriority') },
+          ],
+        })),
       h('span', { className: 'dsn-filter-group', title: t('filter.priority') },
         h('span', { className: 'dsn-filter-label' }, t('filter.priority')),
-        h('select', {
-          className: 'dsn-filter-select',
+        h(DSN.SelectMenu, {
+          t: t,
           value: props.priorityFilter,
-          'aria-label': t('filter.priority'),
-          onChange: function (event) { props.onPriorityFilter(event.target.value) },
-        },
-          h('option', { value: 'all' }, t('filter.all')),
-          DSN.PRIORITIES.map(function (name) {
-            return h('option', { key: name, value: name }, t('priority.' + name))
-          }))),
+          ariaLabel: t('filter.priority'),
+          onChange: function (value) { props.onPriorityFilter(value) },
+          options: [{ value: 'all', label: t('filter.all') }].concat(DSN.PRIORITIES.map(function (name) {
+            return { value: name, label: t('priority.' + name), dot: DSN.priorityMeta(name).token }
+          })),
+        })),
       h('button', {
         type: 'button',
         className: 'dsn-filter-toggle' + (props.hideDone ? ' is-on' : ''),
@@ -6900,6 +6901,12 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
 ;(function () {
   'use strict'
 
+  var ReactDOM = require('react-dom')
+
+  /* The panel is a backdrop-filter container, so a `position: fixed` popover
+   * rendered inside it would be positioned against the panel instead of the
+   * viewport. Menus are therefore portalled into <body> and placed by hand. */
+
   DSN.addStrings({
     'priority.urgent': '紧急',
     'priority.high': '高',
@@ -7015,6 +7022,190 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
    * priority
    * ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ *
+   * select menu
+   *
+   * A themed replacement for the native <select>: the browser control brings
+   * its own OS styling that clashes with the board, so every choice is a pill
+   * button plus a portalled popover that matches the rest of the UI.
+   *
+   * props: { t, value, options: [{ value, label, dot? }], onChange(value),
+   *          variant: 'filter' | 'pill', ariaLabel?, title?, className? }
+   * ------------------------------------------------------------------ */
+
+  var MENU_Z = 2147483005
+
+  DSN.SelectMenu = function SelectMenu(props) {
+    var React = DSN.React
+    var t = props.t || DSN.fallbackT
+    var options = props.options || []
+    var variant = props.variant === 'pill' ? 'pill' : 'filter'
+    var openState = React.useState(false)
+    var open = openState[0]
+    var setOpen = openState[1]
+    var activeState = React.useState(-1)
+    var active = activeState[0]
+    var setActive = activeState[1]
+    var btnRef = React.useRef(null)
+    var menuRef = React.useRef(null)
+
+    var currentIndex = -1
+    for (var i = 0; i < options.length; i += 1) {
+      if (options[i].value === props.value) currentIndex = i
+    }
+    var currentOption = currentIndex >= 0 ? options[currentIndex] : null
+
+    function closeMenu(refocus) {
+      setOpen(false)
+      setActive(-1)
+      if (refocus && btnRef.current && typeof btnRef.current.focus === 'function') btnRef.current.focus()
+    }
+
+    function choose(index) {
+      var option = options[index]
+      closeMenu(true)
+      if (!option) return
+      if (option.value !== props.value && typeof props.onChange === 'function') props.onChange(option.value)
+    }
+
+    function placeMenu() {
+      var button = btnRef.current
+      var menu = menuRef.current
+      if (!button || !menu || typeof button.getBoundingClientRect !== 'function') return
+      var anchor = button.getBoundingClientRect()
+      var box = menu.getBoundingClientRect()
+      var vw = window.innerWidth || 1024
+      var vh = window.innerHeight || 768
+      var left = Math.min(Math.max(6, anchor.left), Math.max(6, vw - box.width - 6))
+      var top = anchor.bottom + 4
+      if (top + box.height > vh - 6) top = Math.max(6, anchor.top - box.height - 4)
+      menu.style.left = Math.round(left) + 'px'
+      menu.style.top = Math.round(top) + 'px'
+      menu.style.minWidth = Math.round(Math.max(anchor.width, 132)) + 'px'
+      menu.style.visibility = 'visible'
+    }
+
+    React.useEffect(function () {
+      if (open) placeMenu()
+    }, [open])
+
+    React.useEffect(function () {
+      if (!open) return undefined
+
+      function onPointerDown(event) {
+        var menu = menuRef.current
+        var button = btnRef.current
+        if (menu && menu.contains && menu.contains(event.target)) return
+        if (button && button.contains && button.contains(event.target)) return
+        setOpen(false)
+        setActive(-1)
+      }
+
+      function onKeyDown(event) {
+        var count = options.length
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          closeMenu(true)
+          return
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          var step = event.key === 'ArrowDown' ? 1 : -1
+          setActive(function (previous) {
+            var base = previous < 0 ? (step > 0 ? -1 : 0) : previous
+            return (base + step + count + count) % count
+          })
+          return
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          event.stopPropagation()
+          choose(active >= 0 ? active : currentIndex)
+          return
+        }
+        if (event.key === 'Tab') {
+          setOpen(false)
+          setActive(-1)
+        }
+      }
+
+      document.addEventListener('pointerdown', onPointerDown, true)
+      document.addEventListener('keydown', onKeyDown, true)
+      window.addEventListener('resize', placeMenu)
+      window.addEventListener('scroll', placeMenu, true)
+      return function () {
+        document.removeEventListener('pointerdown', onPointerDown, true)
+        document.removeEventListener('keydown', onKeyDown, true)
+        window.removeEventListener('resize', placeMenu)
+        window.removeEventListener('scroll', placeMenu, true)
+      }
+    }, [open, active, props.value, options.length])
+
+    function toggle() {
+      if (open) {
+        closeMenu(false)
+        return
+      }
+      setActive(currentIndex)
+      setOpen(true)
+    }
+
+    var triggerClass = variant === 'pill'
+      ? 'dsn-prio dsn-prio--' + (currentOption ? currentOption.value : DSN.DEFAULT_PRIORITY) + ' dsn-prio--pick dsn-select--pill'
+      : 'dsn-select dsn-select--filter'
+
+    var trigger = h('button', {
+      ref: btnRef,
+      type: 'button',
+      className: triggerClass + (open ? ' is-open' : '') + (props.className ? ' ' + props.className : ''),
+      title: props.title || props.ariaLabel || undefined,
+      'aria-haspopup': 'listbox',
+      'aria-expanded': open ? 'true' : 'false',
+      'aria-label': props.ariaLabel || undefined,
+      'data-dsn-nodrag': '1',
+      'data-dsn-select': variant,
+      'data-value': props.value,
+      onPointerDown: function (event) { event.preventDefault(); event.stopPropagation() },
+      onClick: function (event) { event.preventDefault(); event.stopPropagation(); toggle() },
+    },
+      currentOption && currentOption.dot
+        ? h('span', { className: 'dsn-prio-dot', style: { background: currentOption.dot }, 'aria-hidden': 'true' })
+        : null,
+      h('span', { className: 'dsn-select-text' }, currentOption ? currentOption.label : ''),
+      h('span', { className: 'dsn-select-chevron', 'aria-hidden': 'true' }, h(DSN.Icon, { name: 'chevron', size: 10 })))
+
+    var menu = open ? ReactDOM.createPortal(
+      h('div', {
+        ref: menuRef,
+        className: 'dsn-menu',
+        role: 'listbox',
+        'aria-label': props.ariaLabel || undefined,
+        'data-dsn-menu': '1',
+        style: { zIndex: MENU_Z, visibility: 'hidden' },
+      },
+        options.map(function (option, index) {
+          var selected = option.value === props.value
+          return h('button', {
+            key: option.value,
+            type: 'button',
+            role: 'option',
+            className: 'dsn-menu-item' + (selected ? ' is-selected' : '') + (index === active ? ' is-active' : ''),
+            'aria-selected': selected ? 'true' : 'false',
+            'data-value': option.value,
+            onPointerDown: function (event) { event.preventDefault() },
+            onMouseEnter: function () { setActive(index) },
+            onClick: function (event) { event.preventDefault(); event.stopPropagation(); choose(index) },
+          },
+            option.dot ? h('span', { className: 'dsn-menu-dot', style: { background: option.dot }, 'aria-hidden': 'true' }) : null,
+            h('span', { className: 'dsn-menu-label' }, option.label),
+            selected ? h('span', { className: 'dsn-menu-check', 'aria-hidden': 'true' }, h(DSN.Icon, { name: 'check', size: 12 })) : null)
+        })),
+      document.body) : null
+
+    return h('span', { className: 'dsn-select-wrap' }, trigger, menu)
+  }
+
   /** Coloured read-only pill (used in the tasks view and the sheet header). */
   DSN.PriorityPill = function PriorityPill(props) {
     var t = props.t || DSN.fallbackT
@@ -7029,37 +7220,25 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
       h('span', { className: 'dsn-prio-text' }, t('priority.' + priority)))
   }
 
-  /**
-   * Pill + native select: one click opens the four options, no custom popover
-   * to position, and it stays keyboard reachable for free.
-   */
+  /** Priority pill that opens the four-step menu. */
   DSN.PrioritySelect = function PrioritySelect(props) {
     var t = props.t || DSN.fallbackT
     var note = props.note || {}
     var priority = DSN.PRIORITY_RANK[note.priority] === undefined ? DSN.DEFAULT_PRIORITY : note.priority
-    var meta = DSN.priorityMeta(priority)
-    var options = DSN.PRIORITIES.map(function (name) {
-      return h('option', { key: name, value: name }, t('priority.' + name))
-    })
-    return h('label', {
-      className: 'dsn-prio dsn-prio--' + priority + ' dsn-prio--pick' + (props.className ? ' ' + props.className : ''),
+    return h(DSN.SelectMenu, {
+      t: t,
+      variant: 'pill',
+      value: priority,
+      className: props.className,
+      ariaLabel: t('priority.label'),
       title: t('priority.label'),
-      'data-dsn-nodrag': '1',
-      'data-priority': priority,
-      onPointerDown: extraPrevent,
-    },
-      h('span', { className: 'dsn-prio-dot', 'aria-hidden': 'true' }),
-      h('select', {
-        className: 'dsn-prio-select',
-        value: priority,
-        'aria-label': t('priority.label'),
-        'data-dsn-priority-select': '1',
-        onChange: function (event) {
-          var next = event.target.value
-          if (props.store && props.store.actions) props.store.actions.setPriority(note.id, next)
-        },
-        onPointerDown: function (event) { event.stopPropagation() },
-      }, options))
+      options: DSN.PRIORITIES.map(function (name) {
+        return { value: name, label: t('priority.' + name), dot: DSN.priorityMeta(name).token }
+      }),
+      onChange: function (next) {
+        if (props.store && props.store.actions) props.store.actions.setPriority(note.id, next)
+      },
+    })
   }
 
   /* ------------------------------------------------------------------ *
@@ -7179,6 +7358,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     var t = props.t || DSN.fallbackT
     var note = props.note || {}
     var comments = Array.isArray(note.comments) ? note.comments : []
+    var compact = props.compact === true
     var draftRef = React.useRef(null)
 
     function send() {
@@ -7231,7 +7411,11 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
             h(DSN.Content, { html: safe, kind: 'text' }))))
     })
 
-    return h('div', { className: 'dsn-comments', 'data-dsn-comments': '1' },
+    return h('div', {
+      className: 'dsn-comments' + (compact ? ' dsn-comments--compact' : ''),
+      'data-dsn-comments': '1',
+      'data-dsn-comments-compact': compact ? '1' : undefined,
+    },
       h('div', { className: 'dsn-comments-head' },
         h('span', { className: 'dsn-comments-title' }, t('comment.title')),
         h('span', { className: 'dsn-comments-count' }, String(comments.length))),
@@ -7242,7 +7426,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
         h('textarea', {
           ref: draftRef,
           className: 'dsn-comment-input',
-          rows: 2,
+          rows: compact ? 1 : 2,
           placeholder: t('comment.placeholder'),
           'aria-label': t('comment.title'),
           spellCheck: false,
@@ -7435,20 +7619,43 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     '.dsn-prio { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;',
     '  height: 18px; padding: 0 7px; border-radius: 999px; border: none;',
     '  background: transparent; color: var(--dsw-alias-label-secondary, #6b7280);',
-    '  font-size: 11px; font-weight: 500; line-height: 18px; white-space: nowrap; }',
-    '.dsn-prio--pick { cursor: pointer; position: relative; padding-right: 2px; }',
+    '  font-family: inherit; font-size: 11px; font-weight: 500; line-height: 18px; white-space: nowrap; }',
     '.dsn-prio--urgent { color: var(--dsw-alias-label-error, #d9534f); background: color-mix(in srgb, var(--dsw-alias-label-error, #d9534f) 13%, transparent); }',
     '.dsn-prio--high { color: var(--dsw-alias-state-business-primary, #4176e6); background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 13%, transparent); }',
     '.dsn-prio--normal { background: color-mix(in srgb, var(--dsw-alias-label-secondary, #6b7280) 10%, transparent); }',
-    '.dsn-prio--low { color: var(--dsw-alias-label-tertiary, #adb2b8); background: transparent; }',
+    '.dsn-prio--low { color: var(--dsw-alias-label-tertiary, #adb2b8); background: color-mix(in srgb, var(--dsw-alias-label-tertiary, #adb2b8) 8%, transparent); }',
     '.dsn-prio-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }',
     '.dsn-prio-text { max-width: 44px; overflow: hidden; text-overflow: ellipsis; }',
-    '.dsn-prio-select { appearance: none; -webkit-appearance: none; border: 0; background: transparent;',
-    '  color: inherit; font: inherit; padding: 0 10px 0 1px; margin: 0; cursor: pointer; outline: none; }',
-    '.dsn-prio-select::-ms-expand { display: none; }',
-    '.dsn-prio::after { content: ""; width: 0; height: 0; border-left: 3px solid transparent;',
-    '  border-right: 3px solid transparent; border-top: 4px solid currentColor; opacity: 0.7; }',
-    '.dsn-prio--pick { padding-right: 6px; gap: 4px; }',
+    '.dsn-prio--pick { padding: 0 5px 0 7px; gap: 4px; cursor: pointer; transition: background-color 0.14s ease; }',
+    '.dsn-prio--pick:hover { background: color-mix(in srgb, currentColor 18%, transparent); }',
+    '.dsn-prio--pick:focus-visible { outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent, #b9c6f5); outline-offset: -1px; }',
+    '.dsn-prio--pick .dsn-select-text { max-width: 44px; overflow: hidden; text-overflow: ellipsis; }',
+    /* select trigger + popover menu */
+    '.dsn-select-wrap { display: inline-flex; align-items: center; flex: 0 0 auto; }',
+    '.dsn-select { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 5px 0 7px;',
+    '  border: 1px solid transparent; border-radius: 7px; background: transparent;',
+    '  color: var(--dsw-alias-label-secondary, #6b7280); font-family: inherit; font-size: 11.5px;',
+    '  font-weight: 500; line-height: 1; cursor: pointer; transition: background-color 0.14s ease, color 0.14s ease; }',
+    '.dsn-select:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(15,17,21,0.06)); color: var(--dsw-alias-label-primary, #0f1115); }',
+    '.dsn-select.is-open { background: var(--dsw-alias-interactive-bg-hover, rgba(15,17,21,0.06)); color: var(--dsw-alias-label-primary, #0f1115); }',
+    '.dsn-select:focus-visible { outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent, #b9c6f5); outline-offset: -1px; }',
+    '.dsn-select-text { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.dsn-select-chevron { display: inline-flex; align-items: center; opacity: 0.55; transition: transform 0.14s ease; }',
+    '.dsn-select.is-open .dsn-select-chevron { transform: rotate(180deg); opacity: 0.8; }',
+    '.dsn-menu { position: fixed; z-index: 2147483005; display: block; padding: 4px; margin: 0;',
+    '  min-width: 132px; max-width: 240px; box-sizing: border-box; border-radius: 10px;',
+    '  background: var(--dsw-alias-bg-layer-1, #ffffff); border: 1px solid var(--dsw-alias-border-l2, rgba(11,12,15,0.12));',
+    '  box-shadow: 0 10px 28px color-mix(in srgb, #000 18%, transparent), 0 1px 2px color-mix(in srgb, #000 10%, transparent); }',
+    '.dsn-menu-item { display: flex; align-items: center; gap: 7px; width: 100%; box-sizing: border-box;',
+    '  height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent;',
+    '  color: var(--dsw-alias-label-primary, #0f1115); font-family: inherit; font-size: 12px;',
+    '  font-weight: 500; line-height: 1; text-align: left; cursor: pointer; }',
+    '.dsn-menu-item:hover, .dsn-menu-item.is-active { background: var(--dsw-alias-interactive-bg-hover, rgba(15,17,21,0.06)); }',
+    '.dsn-menu-item.is-selected { font-weight: 600; }',
+    '.dsn-menu-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }',
+    '.dsn-menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.dsn-menu-check { flex: 0 0 auto; display: inline-flex; align-items: center;',
+    '  color: var(--dsw-alias-state-business-primary, #4176e6); }',
     /* checklist */
     '.dsn-tasks { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 0; }',
     '.dsn-tasks--sheet { padding-top: 10px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(11,12,15,0.08)); margin-top: 10px; }',
@@ -7503,6 +7710,19 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     '.dsn-comment-input::placeholder { color: var(--dsw-alias-label-tertiary, #adb2b8); }',
     '.dsn-comment-formbar { display: flex; align-items: center; gap: 6px; }',
     '.dsn-comment-hint { flex: 1 1 auto; font-size: 10px; color: var(--dsw-alias-label-tertiary, #adb2b8); }',
+    /* compact thread (detached windows) */
+    '.dsn-comments--compact { gap: 4px; padding-top: 8px; margin-top: 8px; }',
+    '.dsn-comments--compact .dsn-comments-title { font-size: 10.5px; }',
+    '.dsn-comments--compact .dsn-comments-count { font-size: 10px; }',
+    '.dsn-comments--compact .dsn-comment { gap: 6px; }',
+    '.dsn-comments--compact .dsn-comment-name { font-size: 11px; }',
+    '.dsn-comments--compact .dsn-comment-age { font-size: 10px; }',
+    '.dsn-comments--compact .dsn-comment-body,',
+    '.dsn-comments--compact .dsn-comment-body .dsn-content { font-size: 11.5px; line-height: 1.5; }',
+    '.dsn-comments--compact .dsn-comment-input { min-height: 32px; padding: 5px 7px; font-size: 11.5px; }',
+    '.dsn-comments--compact .dsn-comment-formbar { gap: 4px; }',
+    '.dsn-comments--compact .dsn-comment-hint { font-size: 9.5px; }',
+    '.dsn-comments--compact .dsn-btn-tiny { height: 22px; padding: 0 8px; font-size: 11px; }',
     /* detail sheet */
     '.dsn-sheet { position: absolute; inset: 0; z-index: 6; display: flex; align-items: flex-start; justify-content: center;',
     '  padding: 8px; background: var(--dsw-alias-bg-mask-1, rgba(15,17,21,0.3)); }',
@@ -7541,20 +7761,17 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     '  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 12%, transparent); }',
     '.dsn-chip--warn:hover { background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4176e6) 20%, transparent); color: var(--dsw-alias-state-business-primary, #4176e6); }',
     /* filters row */
-    '.dsn-filters { display: flex; align-items: center; gap: 5px; padding: 0 12px 8px; flex-wrap: wrap; }',
-    '.dsn-filter-group { display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 4px 0 6px;',
-    '  border-radius: 999px; background: color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 5%, transparent); }',
-    '.dsn-filter-label { font-size: 10.5px; color: var(--dsw-alias-label-tertiary, #adb2b8); }',
-    '.dsn-filter-select { appearance: none; -webkit-appearance: none; border: 0; background: transparent;',
-    '  color: var(--dsw-alias-label-secondary, #6b7280); font: inherit; font-size: 11px; padding: 0 9px 0 1px;',
-    '  margin: 0; cursor: pointer; outline: none; }',
-    '.dsn-filter-group::after { content: ""; width: 0; height: 0; border-left: 3px solid transparent;',
-    '  border-right: 3px solid transparent; border-top: 4px solid var(--dsw-alias-label-tertiary, #adb2b8); margin-left: -6px; pointer-events: none; }',
-    '.dsn-filter-toggle { height: 22px; padding: 0 8px; border-radius: 999px; border: 0; cursor: pointer;',
+    '.dsn-filters { display: flex; align-items: center; gap: 2px; padding: 0 12px 8px; flex-wrap: wrap; }',
+    '.dsn-filter-group { display: inline-flex; align-items: center; gap: 1px; height: 22px;',
+    '  padding: 0; border-radius: 999px; background: transparent; }',
+    '.dsn-filter-label { padding-left: 6px; font-size: 10.5px; color: var(--dsw-alias-label-tertiary, #adb2b8); }',
+    '.dsn-filter-toggle { height: 22px; padding: 0 9px; margin-left: 4px; border-radius: 999px; border: 0; cursor: pointer;',
     '  background: color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 5%, transparent);',
-    '  color: var(--dsw-alias-label-secondary, #6b7280); font-size: 11px; }',
+    '  color: var(--dsw-alias-label-secondary, #6b7280); font: inherit; font-size: 11px;',
+    '  transition: background-color 0.14s ease, color 0.14s ease; }',
     '.dsn-filter-toggle.is-on { background: var(--dsw-alias-label-primary, #0f1115); color: var(--dsw-alias-label-primary-inverted, #fff); }',
     '.dsn-filter-toggle:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(15,17,21,0.08)); }',
+    '.dsn-filter-toggle:focus-visible { outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent, #b9c6f5); outline-offset: -1px; }',
   ].join('\n'))
 })()
 
@@ -9236,6 +9453,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     '.dsn-float-icon { display: inline-flex; flex: none; color: var(--dsw-alias-label-tertiary, #adb2b8); }',
     '.dsn-float-title { flex: 1 1 auto; min-width: 0; margin: 0; font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }',
     '.dsn-float-actions { display: inline-flex; align-items: center; gap: 1px; flex: none; }',
+    '.dsn-float-prio { display: inline-flex; align-items: center; flex: 0 0 auto; opacity: 0.95; }',
     '.dsn-float-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; margin: 0; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-tertiary, #adb2b8); cursor: pointer; }',
     '.dsn-float-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06)); color: var(--dsw-alias-label-primary, #1b1b1f); }',
     '.dsn-float-btn:focus-visible { outline: 2px solid var(--dsw-alias-border-l4, rgba(11, 12, 15, 0.2)); outline-offset: -1px; }',
@@ -9416,6 +9634,10 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     },
       h('span', { className: 'dsn-float-icon', 'aria-hidden': 'true' }, h(DSN.Icon, { name: 'note', size: 13 })),
       h('span', { className: 'dsn-float-title' }, title),
+      typeof DSN.PriorityPill === 'function'
+        ? h('span', { className: 'dsn-float-prio', 'data-dsn-nodrag': '1' },
+          h(DSN.PriorityPill, { t: t, priority: note.priority }))
+        : null,
       h('div', { className: 'dsn-float-actions', 'data-dsn-nodrag': '1' },
         h('button', {
           type: 'button',
@@ -9435,7 +9657,11 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
       ),
     )
 
-    var body = h('div', { className: 'dsn-float-body' }, h(DSN.Content, { html: note.html, kind: note.kind }))
+    var body = h('div', { className: 'dsn-float-body' },
+      h(DSN.Content, { html: note.html, kind: note.kind }),
+      typeof DSN.CommentThread === 'function'
+        ? h(DSN.CommentThread, { store: store, t: t, note: note, compact: true })
+        : null)
 
     var foot = h('div', { className: 'dsn-float-foot' },
       h('span', { className: 'dsn-float-source' },

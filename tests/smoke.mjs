@@ -769,6 +769,90 @@ check('merge unions the comments by id', shared.comments.length === 2,
   JSON.stringify(shared.comments.map((comment) => comment.id)))
 check('merged comments stay in time order', shared.comments[0].createdAt <= shared.comments[1].createdAt)
 
+// ------------------------------------------- themed select menu ------------
+const menuHost = document.createElement('div')
+document.body.appendChild(menuHost)
+const menuRoot = ReactDOMClient.createRoot(menuHost)
+const menuPicks = []
+let menuRenderedValue = ''
+function MenuHarness() {
+  const [value, setValue] = React.useState('time')
+  menuRenderedValue = value
+  return React.createElement(DSN.SelectMenu, {
+    t: DSN.fallbackT,
+    value,
+    ariaLabel: 'sort by',
+    options: [{ value: 'time', label: 'time' }, { value: 'priority', label: 'priority' }],
+    onChange: (next) => { menuPicks.push(next); setValue(next) },
+  })
+}
+flushSync(() => menuRoot.render(React.createElement(MenuHarness)))
+const menuTrigger = menuHost.querySelector('.dsn-select')
+check('select menu renders a themed trigger',
+  !!menuTrigger && menuTrigger.getAttribute('aria-haspopup') === 'listbox')
+check('select menu trigger shows the current option', menuTrigger.textContent.indexOf('time') >= 0)
+check('select menu has no native select', menuHost.querySelectorAll('select').length === 0)
+flushSync(() => menuTrigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+const portalMenu = document.body.querySelector('.dsn-menu')
+check('opening the menu portals it out of the trigger', !!portalMenu && portalMenu.parentNode === document.body)
+check('the menu lists one row per option', document.body.querySelectorAll('.dsn-menu .dsn-menu-item').length === 2)
+const priorityRow = document.body.querySelector('.dsn-menu .dsn-menu-item[data-value="priority"]')
+check('the current option is marked selected',
+  document.body.querySelector('.dsn-menu .dsn-menu-item.is-selected').getAttribute('data-value') === 'time')
+flushSync(() => priorityRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+check('choosing a row reports the new value', menuPicks.length === 1 && menuPicks[0] === 'priority',
+  JSON.stringify(menuPicks))
+check('choosing a row closes the menu', !document.body.querySelector('.dsn-menu'))
+check('the trigger now shows the chosen option', menuHost.querySelector('.dsn-select').textContent.indexOf('priority') >= 0)
+flushSync(() => menuTrigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+check('the menu reopens on a second click', !!document.body.querySelector('.dsn-menu'))
+flushSync(() => {
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+})
+check('Escape closes the menu', !document.body.querySelector('.dsn-menu'))
+check('Escape does not change the value', menuRenderedValue === 'priority')
+
+// -------------------------------- comments inside detached windows ----------
+const floatNoteId = store.actions.addNote({ html: '<p>窗口里的便签</p>', text: '窗口里的便签', priority: 'high' })
+store.actions.addComment(floatNoteId, DSN.textToHtml('窗口里的评论'), '窗口里的评论')
+const floatHost = document.createElement('div')
+document.body.appendChild(floatHost)
+const floatRoot = ReactDOMClient.createRoot(floatHost)
+flushSync(() => floatRoot.render(React.createElement(DSN.FloaterLayer, { store, t: DSN.fallbackT })))
+check('floater layer renders nothing without entries', floatHost.querySelectorAll('.dsn-float').length === 0)
+store.actions.addFloater(floatNoteId, { x: 40, y: 40, w: 360, h: 320 })
+flushSync(() => {})
+const floatWin = floatHost.querySelector('.dsn-float[data-dsn-float="' + floatNoteId + '"]')
+check('a floater entry mounts a detached window', !!floatWin)
+check('detached window renders the note body',
+  !!floatWin && floatWin.textContent.indexOf('窗口里的便签') >= 0)
+check('detached window header shows the priority pill', !!floatWin.querySelector('.dsn-float-head .dsn-prio'))
+const floatThread = floatWin.querySelector('.dsn-comments')
+check('detached window shows the comment thread', !!floatThread)
+check('detached window uses the compact thread variant',
+  !!floatThread && floatThread.className.indexOf('dsn-comments--compact') >= 0)
+check('detached window lists the stored comment',
+  !!floatThread && floatThread.textContent.indexOf('窗口里的评论') >= 0)
+const floatBox = floatWin.querySelector('.dsn-comment-input')
+check('detached window offers a comment box', !!floatBox)
+floatBox.value = '从窗口发的评论'
+const floatSend = floatWin.querySelector('.dsn-comment-formbar .dsn-btn-primary')
+flushSync(() => floatSend.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+const floatNoteAfter = noteOf(floatNoteId)
+check('a comment typed in the detached window is stored',
+  floatNoteAfter.comments.length === 2, JSON.stringify(floatNoteAfter.comments.map((c) => c.text)))
+check('detached window re-renders the new comment',
+  floatHost.querySelector('.dsn-float').textContent.indexOf('从窗口发的评论') >= 0)
+check('the note still keeps its own priority', floatNoteAfter.priority === 'high')
+store.actions.removeFloater(floatNoteId)
+flushSync(() => {})
+check('closing the floater removes the window', !floatHost.querySelector('.dsn-float'))
+flushSync(() => floatRoot.unmount())
+flushSync(() => menuRoot.unmount())
+floatHost.remove()
+menuHost.remove()
+store.actions.purgeNote(floatNoteId)
+
 store.actions.purgeNote(extraId)
 check('the temporary note is gone', !noteOf(extraId))
 
