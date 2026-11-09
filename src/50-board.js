@@ -166,6 +166,31 @@ function boardSortNotes(a, b) {
   return (b.updatedAt || 0) - (a.updatedAt || 0)
 }
 
+/** Priority order: pinned, then urgency rank, then the usual newest-first. */
+function boardSortByPriority(a, b) {
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+  var rankA = DSN.PRIORITY_RANK[a.priority] === undefined ? 0 : DSN.PRIORITY_RANK[a.priority]
+  var rankB = DSN.PRIORITY_RANK[b.priority] === undefined ? 0 : DSN.PRIORITY_RANK[b.priority]
+  if (rankA !== rankB) return rankB - rankA
+  return (b.updatedAt || 0) - (a.updatedAt || 0)
+}
+
+/** True when the note carries a checklist and every item in it is done. */
+function boardAllDone(note) {
+  var tasks = note && Array.isArray(note.tasks) ? note.tasks : null
+  if (!tasks || !tasks.length) return false
+  for (var i = 0; i < tasks.length; i += 1) if (!tasks[i].done) return false
+  return true
+}
+
+/** Open checklist items of one note. */
+function boardOpenTasks(note) {
+  var tasks = note && Array.isArray(note.tasks) ? note.tasks : []
+  var count = 0
+  for (var i = 0; i < tasks.length; i += 1) if (!tasks[i].done) count += 1
+  return count
+}
+
 function boardReadSections(state, t) {
   var list = state && Array.isArray(state.sections)
     ? state.sections.filter(function (item) { return item && item.id }).slice()
@@ -279,47 +304,88 @@ function boardTabButton(props) {
 
 function BoardToolbar(props) {
   var t = props.t
-  return h('div', { className: 'dsn-toolbar' },
-    h('div', { className: 'dsn-tabs', role: 'tablist' },
-      boardTabButton({
-        active: props.view === 'board',
-        label: t('tab.all'),
-        count: props.liveCount,
-        onClick: function () { props.onView('board') },
-      }),
-      boardTabButton({
-        active: props.view === 'trash',
-        label: t('tab.trash'),
-        count: props.trashCount,
-        onClick: function () { props.onView('trash') },
+  var taskCount = props.taskCount || 0
+  var filters = props.view === 'trash'
+    ? null
+    : h('div', { className: 'dsn-filters' },
+      h('span', { className: 'dsn-filter-group', title: t('filter.sort') },
+        h('span', { className: 'dsn-filter-label' }, t('filter.sort')),
+        h('select', {
+          className: 'dsn-filter-select',
+          value: props.sort,
+          'aria-label': t('filter.sort'),
+          onChange: function (event) { props.onSort(event.target.value) },
+        },
+          h('option', { value: 'time' }, t('filter.sortTime')),
+          h('option', { value: 'priority' }, t('filter.sortPriority')))),
+      h('span', { className: 'dsn-filter-group', title: t('filter.priority') },
+        h('span', { className: 'dsn-filter-label' }, t('filter.priority')),
+        h('select', {
+          className: 'dsn-filter-select',
+          value: props.priorityFilter,
+          'aria-label': t('filter.priority'),
+          onChange: function (event) { props.onPriorityFilter(event.target.value) },
+        },
+          h('option', { value: 'all' }, t('filter.all')),
+          DSN.PRIORITIES.map(function (name) {
+            return h('option', { key: name, value: name }, t('priority.' + name))
+          }))),
+      h('button', {
+        type: 'button',
+        className: 'dsn-filter-toggle' + (props.hideDone ? ' is-on' : ''),
+        'aria-pressed': props.hideDone ? 'true' : 'false',
+        title: t('filter.hideDoneHint'),
+        onClick: function () { props.onToggleHideDone() },
+      }, t('filter.hideDone')))
+  return h('div', null,
+    h('div', { className: 'dsn-toolbar' },
+      h('div', { className: 'dsn-tabs', role: 'tablist' },
+        boardTabButton({
+          active: props.view === 'board',
+          label: t('tab.all'),
+          count: props.liveCount,
+          onClick: function () { props.onView('board') },
+        }),
+        boardTabButton({
+          active: props.view === 'tasks',
+          label: t('tab.tasks'),
+          count: taskCount,
+          onClick: function () { props.onView('tasks') },
+        }),
+        boardTabButton({
+          active: props.view === 'trash',
+          label: t('tab.trash'),
+          count: props.trashCount,
+          onClick: function () { props.onView('trash') },
+        })),
+      h('div', { className: 'dsn-search' },
+        h('span', { className: 'dsn-search-icon', 'aria-hidden': 'true' },
+          h(DSN.Icon, { name: 'search', size: 13 })),
+        h('input', {
+          className: 'dsn-search-input',
+          type: 'search',
+          value: props.search || '',
+          placeholder: t('search.placeholder'),
+          'aria-label': t('search.placeholder'),
+          spellCheck: false,
+          onChange: function (event) { props.onSearch(event.target.value) },
+        }),
+        props.search
+          ? h('button', {
+              type: 'button',
+              className: 'dsn-search-clear',
+              'aria-label': t('search.clear'),
+              title: t('search.clear'),
+              onClick: function () { props.onSearch('') },
+            }, h(DSN.Icon, { name: 'close', size: 12 }))
+          : null),
+      h(BoardIconButton, {
+        icon: 'plus',
+        size: 16,
+        label: t('section.add'),
+        onClick: function () { props.onAddSection() },
       })),
-    h('div', { className: 'dsn-search' },
-      h('span', { className: 'dsn-search-icon', 'aria-hidden': 'true' },
-        h(DSN.Icon, { name: 'search', size: 13 })),
-      h('input', {
-        className: 'dsn-search-input',
-        type: 'search',
-        value: props.search || '',
-        placeholder: t('search.placeholder'),
-        'aria-label': t('search.placeholder'),
-        spellCheck: false,
-        onChange: function (event) { props.onSearch(event.target.value) },
-      }),
-      props.search
-        ? h('button', {
-            type: 'button',
-            className: 'dsn-search-clear',
-            'aria-label': t('search.clear'),
-            title: t('search.clear'),
-            onClick: function () { props.onSearch('') },
-          }, h(DSN.Icon, { name: 'close', size: 12 }))
-        : null),
-    h(BoardIconButton, {
-      icon: 'plus',
-      size: 16,
-      label: t('section.add'),
-      onClick: function () { props.onAddSection() },
-    }))
+    filters)
 }
 
 /* ------------------------------------------------------------------ *
@@ -917,6 +983,22 @@ function NoteCardInner(props) {
   var title = note.title || DSN.headline(note.text || '', 64)
   var showExpand = overflowing || expanded
   var dragging = !!(drag.id && drag.id === note.id)
+  var taskTotal = Array.isArray(note.tasks) ? note.tasks.length : 0
+  var taskDone = 0
+  if (taskTotal) {
+    for (var taskIndex = 0; taskIndex < note.tasks.length; taskIndex += 1) {
+      if (note.tasks[taskIndex].done) taskDone += 1
+    }
+  }
+  var commentCount = Array.isArray(note.comments) ? note.comments.length : 0
+
+  function openDetail(event) {
+    if (event) {
+      boardPrevent(event)
+      boardStop(event)
+    }
+    store.actions.setDetail(note.id)
+  }
 
   function startEdit(event) {
     if (event) {
@@ -1151,14 +1233,40 @@ function NoteCardInner(props) {
             h(DSN.Icon, { name: 'pin', size: 10 }),
             h('span', null, t('list.pinned')))
         : null,
+      typeof DSN.PrioritySelect === 'function'
+        ? h(DSN.PrioritySelect, { store: store, t: t, note: note })
+        : null,
       actions),
     body,
-    note.source && note.source.sessionTitle
-      ? h('div', { className: 'dsn-note-foot' },
-          h('span', { className: 'dsn-chip dsn-note-source', title: note.source.sessionTitle },
-            h(DSN.Icon, { name: 'note', size: 11 }),
-            h('span', null, t('list.source', { name: note.source.sessionTitle }))))
-      : null)
+    h('div', { className: 'dsn-note-foot' },
+      h('div', { className: 'dsn-note-meta' },
+        taskTotal
+          ? h('button', {
+              type: 'button',
+              className: 'dsn-chip dsn-chip--btn' + (taskDone === taskTotal ? ' dsn-chip--warn' : ''),
+              'data-dsn-nodrag': '1',
+              title: t('detail.open'),
+              onPointerDown: boardPrevent,
+              onClick: openDetail,
+            },
+              h(DSN.Icon, { name: 'check', size: 11 }),
+              h('span', null, t('task.progress', { done: taskDone, total: taskTotal })))
+          : null,
+        h('button', {
+          type: 'button',
+          className: 'dsn-chip dsn-chip--btn',
+          'data-dsn-nodrag': '1',
+          title: t('detail.open'),
+          onPointerDown: boardPrevent,
+          onClick: openDetail,
+        },
+          h(DSN.Icon, { name: 'quote', size: 11 }),
+          h('span', null, commentCount ? t('comment.title') + ' ' + commentCount : t('comment.title'))),
+        note.source && note.source.sessionTitle
+          ? h('span', { className: 'dsn-chip dsn-note-source', title: note.source.sessionTitle },
+              h(DSN.Icon, { name: 'note', size: 11 }),
+              h('span', null, t('list.source', { name: note.source.sessionTitle })))
+          : null)))
 }
 
 DSN.NoteCard = function NoteCard(props) {
@@ -1359,12 +1467,16 @@ function BoardBody(props) {
   var notes = Array.isArray(state.notes) ? state.notes : []
   var sections = boardReadSections(state, t)
   var activeId = boardPickActiveId(sections, ui.activeSectionId)
-  var view = ui.view === 'trash' ? 'trash' : 'board'
+  var view = ui.view === 'trash' ? 'trash' : (ui.view === 'tasks' ? 'tasks' : 'board')
   var query = typeof ui.search === 'string' ? ui.search : ''
+  var sortMode = ui.sort === 'priority' ? 'priority' : 'time'
+  var priorityFilter = DSN.PRIORITY_RANK[ui.priorityFilter] === undefined ? 'all' : ui.priorityFilter
+  var hideDone = ui.hideDone === true
   var bridge = props.bridge || DSN.bridge || null
 
   var liveCount = 0
   var trashCount = 0
+  var taskCount = 0
   var sectionCounts = {}
   var i
   for (i = 0; i < notes.length; i++) {
@@ -1375,6 +1487,7 @@ function BoardBody(props) {
       continue
     }
     liveCount += 1
+    taskCount += boardOpenTasks(item)
     var sectionKey = item.sectionId || ''
     sectionCounts[sectionKey] = (sectionCounts[sectionKey] || 0) + 1
   }
@@ -1393,10 +1506,12 @@ function BoardBody(props) {
       var live = notes[i]
       if (!live || live.deletedAt) continue
       if (activeId && live.sectionId !== activeId) continue
+      if (priorityFilter !== 'all' && live.priority !== priorityFilter) continue
+      if (hideDone && boardAllDone(live)) continue
       if (!boardMatchesQuery(live, query)) continue
       visible.push(live)
     }
-    visible.sort(boardSortNotes)
+    visible.sort(sortMode === 'priority' ? boardSortByPriority : boardSortNotes)
   }
 
   var emptyMessage
@@ -1404,6 +1519,9 @@ function BoardBody(props) {
   if (view === 'trash') {
     emptyMessage = query ? t('board.noResults') : t('list.trashEmpty')
     emptyIcon = query ? 'search' : 'trash'
+  } else if (view === 'tasks') {
+    emptyMessage = t('tasks.empty')
+    emptyIcon = 'check'
   } else if (query) {
     emptyMessage = t('board.noResults')
     emptyIcon = 'search'
@@ -1426,11 +1544,32 @@ function BoardBody(props) {
     })
   })
 
-  var stream = view === 'trash'
-    ? h(DSN.TrashView, { store: store, t: t, notes: visible, query: query })
-    : (cards.length
-      ? cards
-      : h(BoardEmpty, { icon: emptyIcon, message: emptyMessage }))
+  var stream
+  if (view === 'trash') {
+    stream = h(DSN.TrashView, { store: store, t: t, notes: visible, query: query })
+  } else if (view === 'tasks') {
+    stream = h(DSN.TasksView, {
+      store: store,
+      t: t,
+      state: state,
+      sectionId: activeId && sections.length > 1 ? '' : activeId,
+    })
+  } else {
+    stream = cards.length ? cards : h(BoardEmpty, { icon: emptyIcon, message: emptyMessage })
+  }
+
+  /* The detail sheet is a view of one note: the card stays in the stream, the
+     sheet adds the checklist and the comment thread on top of the panel. */
+  var detailNote = null
+  if (ui.detailNoteId) {
+    for (i = 0; i < notes.length; i += 1) {
+      var candidate = notes[i]
+      if (candidate && !candidate.deletedAt && candidate.id === ui.detailNoteId) {
+        detailNote = candidate
+        break
+      }
+    }
+  }
 
   return h('div', {
     className: 'dsn-app',
@@ -1446,14 +1585,20 @@ function BoardBody(props) {
       view: view,
       liveCount: liveCount,
       trashCount: trashCount,
+      taskCount: taskCount,
+      sort: sortMode,
+      priorityFilter: priorityFilter,
+      hideDone: hideDone,
       search: query,
       onView: changeView,
       onSearch: changeSearch,
+      onSort: function (next) { store.actions.setSort(next) },
+      onPriorityFilter: function (next) { store.actions.setPriorityFilter(next) },
+      onToggleHideDone: function () { store.actions.toggleHideDone() },
       onAddSection: addSectionClick,
     }),
-    view === 'trash'
-      ? null
-      : h(DSN.SectionRail, {
+    view === 'board'
+      ? h(DSN.SectionRail, {
         store: store,
         t: t,
         sections: sections,
@@ -1462,10 +1607,11 @@ function BoardBody(props) {
         adding: addingSection,
         onAddingChange: setAddingSection,
         onMoved: function () { setDragId('') },
-      }),
-    view === 'trash'
-      ? null
-      : h(DSN.Composer, { store: store, t: t, sectionId: activeId }),
+      })
+      : null,
+    view === 'board'
+      ? h(DSN.Composer, { store: store, t: t, sectionId: activeId })
+      : null,
     dragId && view === 'board'
       ? h(TrashDropZone, { t: t, onDelete: handleNoteDropDelete })
       : null,
@@ -1483,6 +1629,9 @@ function BoardBody(props) {
             h(DSN.Icon, { name: 'insert', size: 22 }),
             h('span', { className: 'dsn-board-drop-title' }, t('capture.dropHere')),
             h('span', { className: 'dsn-board-drop-sub' }, t('capture.dropRich'))))
+      : null,
+    detailNote && typeof DSN.NoteSheet === 'function'
+      ? h(DSN.NoteSheet, { store: store, t: t, note: detailNote })
       : null)
 }
 
