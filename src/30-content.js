@@ -691,19 +691,22 @@ DSN.Editor = function Editor(props) {
     }, CONTENT_EDITOR_DEBOUNCE_MS)
   }
 
-  // Re-seed from the outside only while the editor is not focused, and never
-  // echo an onChange value straight back into the DOM.
+  // Re-seed from the outside only when the value is not just our own echo.
+  // A focused editor keeps its DOM untouched so the caret never jumps, except
+  // for an explicit reset to empty: the composer clears its draft right after
+  // saving while it still holds focus, and without this the old text stays on
+  // screen even though the note was stored.
   React.useEffect(function () {
     var node = nodeRef.current
     if (!node) return
     var seed = DSN.sanitizeHtml(CONTENT_editorSeed(config.value))
-    if (focusedRef.current) return
     if (seed === lastEmittedRef.current) return
+    if (focusedRef.current && seed !== '') return
     if (node.innerHTML === seed) {
       lastEmittedRef.current = seed
       return
     }
-    node.innerHTML = DSN.sanitizeHtml(CONTENT_editorSeed(config.value))
+    node.innerHTML = seed
     lastEmittedRef.current = seed
     CONTENT_updateEmpty(node)
   }, [config.value])

@@ -379,13 +379,7 @@ function BoardToolbar(props) {
               title: t('search.clear'),
               onClick: function () { props.onSearch('') },
             }, h(DSN.Icon, { name: 'close', size: 12 }))
-          : null),
-      h(BoardIconButton, {
-        icon: 'plus',
-        size: 16,
-        label: t('section.add'),
-        onClick: function () { props.onAddSection() },
-      })),
+          : null)),
     filters)
 }
 
@@ -1390,10 +1384,6 @@ function BoardBody(props) {
     store.actions.setSearch(value)
   }
 
-  function addSectionClick() {
-    setAddingSection(true)
-  }
-
   function handleNoteDropDelete(noteId) {
     if (!noteId) return
     store.actions.deleteNote(noteId)
@@ -1596,7 +1586,6 @@ function BoardBody(props) {
       onSort: function (next) { store.actions.setSort(next) },
       onPriorityFilter: function (next) { store.actions.setPriorityFilter(next) },
       onToggleHideDone: function () { store.actions.toggleHideDone() },
-      onAddSection: addSectionClick,
     }),
     view === 'board'
       ? h(DSN.SectionRail, {
