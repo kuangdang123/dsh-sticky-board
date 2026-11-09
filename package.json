@@ -1,0 +1,75 @@
+{
+  "name": "dsh-sticky-board",
+  "version": "1.0.0",
+  "description": "Sticky notes for the DeepSeek Harness Web GUI: capture chat selections, tables, images and code blocks into categorized notes, then drop them back into any conversation. 便签插件：随手记录、跨对话搬运、分区管理、画中画置顶窗口。",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "guangdang",
+    "url": "https://github.com/guangdang"
+  },
+  "homepage": "https://github.com/guangdang/dsh-sticky-board#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guangdang/dsh-sticky-board.git"
+  },
+  "bugs": {
+    "url": "https://github.com/guangdang/dsh-sticky-board/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "sticky-notes",
+    "notes",
+    "clipboard",
+    "picture-in-picture"
+  ],
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/en.json": "./locale/en.json",
+    "./locale/zh.json": "./locale/zh.json",
+    "./icon": "./icon.svg",
+    "./assets/*": "./assets/*",
+    "./screenshots.json": "./screenshots.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "assets",
+    "screenshots.json",
+    "locale",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node tests/smoke.mjs && node tests/host.mjs && node tests/sync.mjs",
+    "test:browser": "node tests/browser.mjs"
+  }
+}

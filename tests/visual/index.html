@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>DSH sticky notes — visual harness</title>
+<!-- The real DSH design tokens, so --dsw-alias-* resolve exactly as in the app. -->
+<link rel="stylesheet" href="vendor/design-platform.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #eef0f4;
+    color: #0f1115;
+  }
+  body[data-ds-dark-theme] { background: #151517; color: #f9fafb; }
+  /* A stand-in for the chat column, only so the capture chip has something to
+     anchor to in a screenshot. */
+  .fake-app { display: flex; height: 100%; }
+  .fake-sidebar { width: 232px; background: #fff; border-right: 1px solid rgba(0,0,0,.08); padding: 14px; box-sizing: border-box; }
+  body[data-ds-dark-theme] .fake-sidebar { background: #232324; border-right-color: rgba(255,255,255,.08); }
+  .fake-sidebar h1 { font-size: 13px; font-weight: 600; margin: 0 0 12px; opacity: .7; }
+  .fake-sidebar .row { font-size: 13px; padding: 7px 9px; border-radius: 8px; opacity: .75; }
+  .fake-sidebar .row.on { background: rgba(38,49,72,.08); opacity: 1; font-weight: 500; }
+  .fake-main { flex: 1; padding: 0 44px 34px; box-sizing: border-box; overflow: hidden; }
+  /* Stand-in for the real session header: our launcher mounts leftmost of the
+     right-aligned utility buttons, exactly like the live slot. */
+  .fake-topbar { display: flex; align-items: center; gap: 10px; height: 52px; margin: 0 -44px 22px; padding: 0 16px; border-bottom: 1px solid rgba(0,0,0,.07); }
+  body[data-ds-dark-theme] .fake-topbar { border-bottom-color: rgba(255,255,255,.08); }
+  .fake-topbar-title { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fake-topbar-actions { display: flex; align-items: center; gap: 6px; }
+  .fake-btn { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; color: rgba(107,114,128,1); font-size: 14px; line-height: 1; cursor: default; display: inline-flex; align-items: center; justify-content: center; }
+  .fake-main .bubble { max-width: 640px; background: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(0,0,0,.05); font-size: 14px; line-height: 1.75; }
+  body[data-ds-dark-theme] .fake-main .bubble { background: #232324; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  .fake-main .bubble p { margin: 0 0 10px; }
+  .fake-main .bubble p:last-child { margin-bottom: 0; }
+  .fake-turn { max-width: 640px; }
+  .fake-seat { background: transparent; font-size: 14px; line-height: 1.75; }
+  .fake-seat p { margin: 0 0 10px; }
+  .fake-table { border-collapse: collapse; font-size: 13px; }
+  .fake-table th, .fake-table td { border: 1px solid rgba(11,12,15,.14); padding: 4px 10px; text-align: left; }
+  body[data-ds-dark-theme] .fake-table th, body[data-ds-dark-theme] .fake-table td { border-color: rgba(255,255,255,.18); }
+  .fake-icon-row { display: flex; align-items: center; gap: 4px; margin: 2px 0 18px; }
+  .fake-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: 6px; background: transparent; color: #adb2b8; font-size: 14px; line-height: 1; cursor: default; }
+  body[data-ds-dark-theme] .fake-icon { color: #86888c; }
+  .fake-composer { display: flex; align-items: flex-end; gap: 10px; max-width: 640px; margin-top: 18px; padding: 10px 12px; border: 1px solid rgba(0,0,0,.12); border-radius: 14px; background: #fff; }
+  body[data-ds-dark-theme] .fake-composer { border-color: rgba(255,255,255,.14); background: #232324; }
+  .fake-input { flex: 1; min-height: 22px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; outline: none; }
+  .fake-input:empty::before { content: attr(data-placeholder); color: rgba(107,114,128,1); }
+  .fake-send { flex: none; font-size: 12px; color: rgba(107,114,128,1); }
+  #harness-error { position: fixed; inset: auto 16px 16px auto; max-width: 520px; background: #b42318; color: #fff; font: 12px/1.5 ui-monospace, monospace; padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="fake-app">
+  <aside class="fake-sidebar">
+    <h1>DSH · 会话</h1>
+    <div class="row on">便签插件：设计讨论</div>
+    <div class="row">Vue 组件迁移</div>
+    <div class="row">周报整理</div>
+  </aside>
+  <main class="fake-main">
+    <div class="fake-topbar">
+      <span class="fake-topbar-title">便签插件：设计讨论</span>
+      <div class="fake-topbar-actions" id="fake-actions"></div>
+    </div>
+    <div class="bubble">
+      <p id="evidence">跨对话复用的关键结论：便签应当支持富文本、图片与表格，并且必须能在会话之间直接拖拽搬运。</p>
+      <p>这里是一段普通的回答正文，用来模拟真实对话中被选中的文本。</p>
+    </div>
+    <div class="fake-turn" data-chat-turn="1" data-chat-flow="main">
+      <div class="fake-seat" data-chat-turn="1" data-chat-flow-kind="assistant-step" data-chat-flow="main">
+        <p><strong>结论：</strong>便签应当支持富文本、图片与表格，并且必须能在会话之间直接拖拽搬运。</p>
+        <p>这一条回复用来验证“存便签”能把整条回复带进便签，而不是只带选中的一句话。</p>
+        <table class="fake-table">
+          <thead><tr><th>能力</th><th>状态</th></tr></thead>
+          <tbody><tr><td>跨会话复用</td><td>已支持</td></tr><tr><td>富文本渲染</td><td>已支持</td></tr></tbody>
+        </table>
+      </div>
+      <div class="fake-icon-row" data-turn-tail="1" id="fake-reply-row">
+        <button type="button" class="fake-icon" aria-hidden="true">⧉</button>
+        <div id="fake-reply-mount" style="display:contents"></div>
+        <button type="button" class="fake-icon" aria-hidden="true">👍</button>
+        <button type="button" class="fake-icon" aria-hidden="true">👎</button>
+        <button type="button" class="fake-icon" aria-hidden="true">☰</button>
+        <button type="button" class="fake-icon" aria-hidden="true">↗</button>
+      </div>
+    </div>
+    <div class="fake-composer" data-composer-card>
+      <div class="fake-input" contenteditable="true" role="textbox" aria-label="输入框" data-testid="composer"></div>
+      <span class="fake-send">发送</span>
+    </div>
+  </main>
+</div>
+
+<script src="vendor/react.development.js"></script>
+<script src="vendor/react-dom.development.js"></script>
+<script>
+(function () {
+  'use strict'
+  var params = new URLSearchParams(location.search)
+  var theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  var scene = params.get('scene') || 'board'
+  document.documentElement.setAttribute('data-theme', theme)
+  document.body.setAttribute('data-theme', theme)
+  // DSH marks dark mode with body[data-ds-dark-theme].
+  if (theme === 'dark') document.body.setAttribute('data-ds-dark-theme', '')
+
+  function fail(error) {
+    var box = document.createElement('pre')
+    box.id = 'harness-error'
+    box.textContent = 'HARNESS ERROR\n' + (error && (error.stack || error.message) || String(error))
+    document.body.appendChild(box)
+    throw error
+  }
+  window.addEventListener('error', function (event) { fail(event.error || event.message) })
+
+  window.React = window.React
+  var registration = null
+  window.__ModuleLoader__ = { load: function (spec) { registration = spec } }
+
+  var script = document.createElement('script')
+  script.src = '../../client.js'
+  script.onload = boot
+  script.onerror = function () { fail(new Error('client.js failed to load')) }
+  document.head.appendChild(script)
+
+  function dictOf(table, locale) { return table[locale] || table.zh }
+
+  function boot() {
+    if (!registration) return fail(new Error('client.js did not register with __ModuleLoader__'))
+    var module = registration.factory(function (name) {
+      if (name === 'react') return window.React
+      if (name === 'react-dom/client') return window.ReactDOM
+      throw new Error('unexpected require: ' + name)
+    })
+    var registered = []
+    var dicts = { zh: {}, en: {} }
+    var menuContributions = []
+    var ctx = {
+      slots: {
+        inject: function (key, callback) { return callback() },
+        register: function (declaration, component) { registered.push({ declaration: declaration, component: component }); return function () {} },
+        registerFactory: function () { return function () {} },
+      },
+      locale: {
+        register: function (ns, locale, dict) { dicts[locale] = Object.assign(dicts[locale] || {}, dict); return function () {} },
+        bind: function () {
+          return function (key, vars) {
+            var table = dicts.zh || {}
+            var text = table[key] != null ? table[key] : key
+            return vars ? String(text).replace(/\{(\w+)\}/g, function (m, n) { return n in vars ? String(vars[n]) : m }) : String(text)
+          }
+        },
+        getLocale: function () { return 'zh' },
+      },
+      uiConversation: { interactions: { register: function () { return function () {} } } },
+      effect: function (callback) { var result = callback(); return function () { if (typeof result === 'function') result() } },
+      inject: function (dependencies, callback) {
+        var scoped = {}
+        dependencies.forEach(function (name) {
+          var service = ctx.get(name)
+          if (service) scoped[name] = service
+        })
+        return callback(scoped)
+      },
+      get: function (name) {
+        if (name !== 'contextMenus') return undefined
+        return {
+          register: function (contribution) {
+            menuContributions.push(contribution)
+            return function () {}
+          },
+        }
+      },
+      logger: { info: function () {}, warn: function () {}, error: function () {}, debug: function () {} },
+    }
+    // `?host=1` pretends the Host half answers, so the footer shows the durable
+    // storage state instead of the browser-only fallback.
+    if (params.get('host') === '1') {
+      window.fetch = function (url, init) {
+        var payload = { ok: true, savedAt: Date.now(), bytes: 1 }
+        if (!init || init.method !== 'PUT') {
+          var state = null
+          payload = {
+            ok: true,
+            empty: false,
+            savedAt: Date.now(),
+            file: 'C:\\Users\\liangjiaqi\\.dsh\\plugin-data\\dsh-sticky-board\\notes.json',
+            state: state,
+          }
+        }
+        return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(payload) } })
+      }
+    }
+    module.apply(ctx)
+    var DSN = window.__DSH_STICKY_BOARD__
+    if (!DSN || !DSN.store) return fail(new Error('debug handle missing'))
+    var store = DSN.store
+    var t = ctx.locale.bind()
+    var React = window.React
+    var h = React.createElement
+
+    // A realistic spread of captured content.
+    store.actions.addNote({
+      html: '<p><strong>便签插件必须满足的三件事</strong></p><ul><li>随心记：选中对话文本即可保存，不打断阅读</li><li>跨会话：便签不属于任何单个会话，随时可以搬走</li><li>原样渲染：表格、图片、代码块都要保持对话里的样子</li></ul>',
+      text: '便签插件必须满足的三件事',
+      title: '设计目标',
+      source: { sessionId: 's1', sessionTitle: '便签插件：设计讨论' },
+      pinned: true,
+    })
+    store.actions.addNote({
+      html: '<table><thead><tr><th>能力</th><th>入口</th><th>状态</th></tr></thead><tbody><tr><td>保存选中文本</td><td>浮动按钮 / 右键菜单</td><td>已完成</td></tr><tr><td>拖拽搬运</td><td>便签卡片</td><td>已完成</td></tr><tr><td>画中画窗口</td><td>面板标题栏</td><td>已完成</td></tr></tbody></table>',
+      text: '能力 入口 状态 保存选中文本 浮动按钮 右键菜单 已完成 拖拽搬运 便签卡片 已完成 画中画窗口 面板标题栏 已完成',
+      title: '能力对照表',
+      source: { sessionId: 's1', sessionTitle: '便签插件：设计讨论' },
+    })
+    store.actions.addNote({
+      html: '<p>把generateView改成纯函数，<code>state</code> 通过参数传入，避免组件内部再读全局。</p><pre><code>function generateView(state, options) {\n  return renderBoard(state, options)\n}</code></pre>',
+      text: '把 generateView 改成纯函数',
+      title: '代码结论',
+      source: { sessionId: 's2', sessionTitle: 'Vue 组件迁移' },
+    })
+    store.actions.addNote({
+      html: '<p>周报结构：本周进展 / 风险 / 下周计划，控制在 10 行以内。</p><p><img src="data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120"><rect width="320" height="120" fill="#eef2ff"/><text x="20" y="46" font-family="sans-serif" font-size="16" fill="#3730a3">image note preview</text><text x="20" y="72" font-family="sans-serif" font-size="12" fill="#4f46e5">rendered exactly like chat</text></svg>') + '" alt="weekly report illustration"></p>',
+      text: '周报结构 本周进展 风险 下周计划',
+      title: '周报模板',
+      source: { sessionId: 's3', sessionTitle: '周报整理' },
+    })
+    store.actions.addSection('待办')
+    store.actions.addSection('参考素材')
+    var state = store.getSnapshot()
+    var sectionId = state.sections.length > 1 ? state.sections[1].id : state.sections[0].id
+    store.actions.addNote({
+      sectionId: sectionId,
+      html: '<p>下周把便签接进 better sidebar，并补一个导出全部便签为 Markdown 的按钮。</p>',
+      text: '下周把便签接进 better sidebar',
+      title: '待办',
+    })
+    if (scene === 'trash') {
+      var first = store.getSnapshot().notes.filter(function (note) { return !note.deletedAt })[0]
+      if (first) store.actions.deleteNote(first.id)
+    }
+    if (scene === 'search') store.actions.setSearch('拖拽')
+    if (scene === 'empty') store.actions.replaceState({ notes: [], sections: [{ id: 'sec-inbox', name: '收集箱', order: 0 }] })
+    store.actions.setActiveSection(store.getSnapshot().sections[0].id)
+    // Switching sections resets the view to the board, so the trash scene has to
+    // be applied after the active section is settled.
+    if (scene === 'trash') store.actions.setView('trash')
+    var size = String(params.get('panel') || '').split('x')
+    if (size.length === 2) {
+      var panelWidth = parseInt(size[0], 10)
+      var panelHeight = parseInt(size[1], 10)
+      if (isFinite(panelWidth) && isFinite(panelHeight) && panelWidth >= 300 && panelHeight >= 240) {
+        store.actions.setPanelRect({ x: 24, y: 24, w: panelWidth, h: panelHeight })
+      }
+    }
+    store.actions.setOpen(true)
+    // `?panel=0` keeps the panel out of the frame, for in-conversation shots.
+    if (params.get('panel') === '0') store.actions.setOpen(false)
+    if (params.get('debugcss') === '1') {
+      var debugStyle = document.createElement('style')
+      debugStyle.textContent = '.dsn-note-actions{opacity:1!important;transform:none!important}'
+        + '.dsn-note{outline:1px dashed rgba(65,118,230,.35);outline-offset:-1px}'
+        + '.dsn-note-clamp{outline:1px dotted rgba(236,19,19,.45);outline-offset:-1px}'
+      document.head.appendChild(debugStyle)
+    }
+
+    var mount = document.createElement('div')
+    mount.id = 'harness-root'
+    document.body.appendChild(mount)
+    var root = window.ReactDOM.createRoot(mount)
+    var panel = registered.filter(function (item) { return item.declaration.id === 'dsh-sticky-board-panel' })[0]
+    var toasts = registered.filter(function (item) { return item.declaration.id === 'dsh-sticky-board-toasts' })[0]
+    var children = [h(panel.component, { key: 'panel', t: t })]
+    if (toasts) children.push(h(toasts.component, { key: 'toasts', t: t }))
+    root.render(h(React.Fragment, null, children))
+
+    // Detached note windows: their own overlay, above the transcript and below
+    // the panel. Mounted into body so they can be dragged anywhere.
+    var floatEntry = registered.filter(function (item) {
+      return item.declaration.id === 'dsh-sticky-board-floaters'
+    })[0]
+    if (floatEntry) {
+      var floatMount = document.createElement('div')
+      floatMount.id = 'harness-floaters'
+      floatMount.style.display = 'contents'
+      document.body.appendChild(floatMount)
+      window.ReactDOM.createRoot(floatMount).render(h(floatEntry.component, { t: t }))
+    }
+
+    // The launcher lives in the session header now: mount it leftmost of the
+    // right-aligned utility buttons, with two stand-in plugin buttons after it.
+    var launcherEntry = registered.filter(function (item) {
+      return item.declaration.name === 'conversation.session.header.utilities'
+    })[0]
+    if (launcherEntry) {
+      var actions = document.getElementById('fake-actions')
+      var launcherMount = document.createElement('div')
+      launcherMount.style.display = 'contents'
+      actions.appendChild(launcherMount)
+      ;['⚙', '☰'].forEach(function (glyph) {
+        var fake = document.createElement('button')
+        fake.type = 'button'
+        fake.className = 'fake-btn'
+        fake.setAttribute('aria-hidden', 'true')
+        fake.textContent = glyph
+        actions.appendChild(fake)
+      })
+      window.ReactDOM.createRoot(launcherMount).render(h(launcherEntry.component, { t: t }))
+    }
+
+    // The reply action row normally sits under a finalized assistant message;
+    // mount it into the fake turn's tail seat so the button is clickable here.
+    var replyEntry = registered.filter(function (item) {
+      return item.declaration.name === 'conversation.chat.assistant-actions'
+    })[0]
+    var replyMount = document.getElementById('fake-reply-mount')
+    if (replyEntry && replyMount) {
+      window.ReactDOM.createRoot(replyMount).render(h(replyEntry.component, { t: t, messageId: 'm1' }))
+    }
+
+    var surfaceEntry = registered.filter(function (item) { return item.declaration.name === 'conversation.chat.text-interaction' })[0]
+    var surfaceHost = null
+    var surfaceRoot = null
+    var surfaceStyle = document.createElement('style')
+    surfaceStyle.textContent = '#harness-surface{position:fixed;z-index:2147483000;visibility:visible}'
+    document.head.appendChild(surfaceStyle)
+
+    // Stands in for the chat flow's own selection popover: the host renders the
+    // slot component here and positions it over the selection.
+    function mountSurface(options) {
+      var opts = options || {}
+      if (!surfaceEntry) return null
+      if (!surfaceHost) {
+        surfaceHost = document.createElement('div')
+        surfaceHost.id = 'harness-surface'
+        surfaceHost.setAttribute('data-text-interaction-surface', '')
+        document.body.appendChild(surfaceHost)
+        surfaceRoot = window.ReactDOM.createRoot(surfaceHost)
+      }
+      var quotes = opts.quotes || []
+      surfaceRoot.render(h(surfaceEntry.component, {
+        t: t,
+        dismiss: function () { if (typeof opts.dismiss === 'function') opts.dismiss() },
+        readText: function () { return opts.text || '' },
+        clearSelection: function () {
+          if (typeof opts.clearSelection === 'function') {
+            opts.clearSelection()
+            return
+          }
+          var selection = window.getSelection()
+          if (selection) selection.removeAllRanges()
+        },
+        inputActions: {
+          insertQuote: function (text) {
+            quotes.push(text)
+            return true
+          },
+        },
+      }))
+      return { host: surfaceHost, quotes: quotes }
+    }
+
+    function placeSurface(target) {
+      if (!surfaceHost || !target) return
+      var box = target.getBoundingClientRect()
+      surfaceHost.style.left = Math.round(box.left + box.width / 2) + 'px'
+      surfaceHost.style.top = Math.round(box.top - 8) + 'px'
+      surfaceHost.style.transform = 'translate(-50%, -100%)'
+    }
+
+    function hideSurface() {
+      if (surfaceHost) surfaceHost.style.visibility = 'hidden'
+    }
+
+    // The composer bridge is normally an invisible dock entry that publishes the
+    // active input to the panel. Mount it against the fake composer so a dragged
+    // note can actually land in the input box here.
+    var fakeInput = document.querySelector('.fake-input')
+    var bridgeEntry = registered.filter(function (item) {
+      return item.declaration.name === 'conversation.input.dock'
+    })[0]
+    var composerInserts = []
+    function composerText() { return fakeInput ? fakeInput.textContent || '' : '' }
+    if (bridgeEntry && fakeInput) {
+      var bridgeMount = document.createElement('div')
+      bridgeMount.id = 'harness-bridge'
+      document.body.appendChild(bridgeMount)
+      window.ReactDOM.createRoot(bridgeMount).render(h(bridgeEntry.component, {
+        t: t,
+        session: { sessionId: 's1', title: '便签插件：设计讨论' },
+        sessionId: 's1',
+        inputActions: {
+          captureInsertion: function () { return { start: composerText().length, end: composerText().length } },
+          insertText: function (text) {
+            composerInserts.push(text)
+            fakeInput.textContent = composerText() + text
+            fakeInput.setAttribute('data-insert-count', String(composerInserts.length))
+            return true
+          },
+          insertQuote: function () { return true },
+        },
+      }))
+    }
+
+    window.__HARNESS__ = {
+      store: store,
+      registered: registered,
+      menus: menuContributions,
+      reply: { row: replyMount, button: function () { return replyMount && replyMount.querySelector('.dsn-inline-action') } },
+      t: t,
+      h: h,
+      React: React,
+      ReactDOM: window.ReactDOM,
+      root: root,
+      composer: {
+        card: document.querySelector('.fake-composer'),
+        input: fakeInput,
+        inserts: composerInserts,
+        text: composerText,
+        reset: function () {
+          composerInserts.length = 0
+          if (fakeInput) fakeInput.textContent = ''
+        },
+      },
+      floaters: {
+        list: function () { return Array.prototype.slice.call(document.querySelectorAll('.dsn-float')) },
+        notes: function () { return ((store.getSnapshot().ui || {}).floaters || []).slice() },
+        transcript: function () { return document.querySelector('.bubble') },
+        /** Drop the card at `index` onto `target` (defaults to the bubble). */
+        popOut: function (index, target) {
+          var card = document.querySelectorAll('.dsn-stream .dsn-note')[index]
+          if (!card) return null
+          var dropTarget = target || document.querySelector('.bubble')
+          var dataTransfer = new DataTransfer()
+          card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dataTransfer }))
+          var box = dropTarget.getBoundingClientRect()
+          var point = { clientX: Math.round(box.left + 120), clientY: Math.round(box.top + 60) }
+          dropTarget.dispatchEvent(new DragEvent('dragover', {
+            bubbles: true, cancelable: true, dataTransfer: dataTransfer,
+            clientX: point.clientX, clientY: point.clientY,
+          }))
+          dropTarget.dispatchEvent(new DragEvent('drop', {
+            bubbles: true, cancelable: true, dataTransfer: dataTransfer,
+            clientX: point.clientX, clientY: point.clientY,
+          }))
+          card.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dataTransfer }))
+          return card
+        },
+      },
+      surface: {
+        mount: mountSurface,
+        place: placeSurface,
+        hide: hideSurface,
+        get host() { return surfaceHost },
+      },
+      waitFor: function (predicate, timeout) {
+        var deadline = Date.now() + (timeout || 2000)
+        return new Promise(function (resolve, reject) {
+          function step() {
+            var value = null
+            try { value = predicate() } catch (error) { reject(error); return }
+            if (value) { resolve(value); return }
+            if (Date.now() > deadline) { reject(new Error('waitFor timeout')); return }
+            setTimeout(step, 30)
+          }
+          step()
+        })
+      },
+      sleep: function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms) }) },
+    }
+
+    if (params.get('selftest') === '1') {
+      var testScript = document.createElement('script')
+      testScript.src = 'selftest.js'
+      document.head.appendChild(testScript)
+    }
+
+    // Expose a selection chip so a screenshot can show the capture affordance.
+    // Re-fires a few times: the panel opening can emit a scroll/blur that
+    // dismisses the chip, and screenshots must show it reliably.
+    [200, 900, 1600, 2300, 3000].forEach(function (delay) {
+      setTimeout(function () {
+        if (params.get('chip') !== '1') return
+        var evidence = document.getElementById('evidence')
+        var range = document.createRange()
+        range.selectNodeContents(evidence)
+        var selection = window.getSelection()
+        selection.removeAllRanges()
+        selection.addRange(range)
+        document.dispatchEvent(new Event('selectionchange', { bubbles: true }))
+        document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+      }, delay)
+    })
+
+    // `?surface=1` mimics the chat flow's own selection popover: the bubble is a
+    // text-interaction source, the text is selected, and our component is mounted
+    // inside a host-styled surface above the selection.
+    setTimeout(function () {
+      if (params.get('surface') !== '1') return
+      var bubble = document.querySelector('.bubble')
+      if (bubble) bubble.setAttribute('data-text-interaction-source', '')
+      var evidence = document.getElementById('evidence')
+      var range = document.createRange()
+      range.selectNodeContents(evidence)
+      var selection = window.getSelection()
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange', { bubbles: true }))
+      document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+      mountSurface({ text: evidence.textContent || '' })
+      placeSurface(evidence)
+    }, 260)
+
+    // `?drop=1` freezes the "drag a note onto the composer" affordance so a
+    // screenshot can show the drop ring and the hint pill.
+    setTimeout(function () {
+      if (params.get('drop') !== '1') return
+      var harness = window.__HARNESS__
+      if (!harness || !harness.composer || !harness.composer.input) return
+      var card = document.querySelector('.dsn-stream .dsn-note')
+      if (!card) return
+      var dataTransfer = new DataTransfer()
+      card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dataTransfer }))
+      var input = harness.composer.input
+      setTimeout(function () {
+        input.dispatchEvent(new DragEvent('dragover', {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: dataTransfer,
+          clientX: 620,
+          clientY: 210,
+        }))
+      }, 140)
+    }, 420)
+
+    // `?float=1` pops two notes out of the panel so a screenshot can show the
+    // detached windows sitting over the transcript, side by side.
+    setTimeout(function () {
+      if (params.get('float') !== '1') return
+      var harness = window.__HARNESS__
+      if (!harness || !harness.floaters) return
+      harness.floaters.popOut(0)
+      setTimeout(function () { harness.floaters.popOut(1) }, 320)
+    }, 520)
+
+    // `?diag=1` dumps computed styles for the panel surfaces into #harness-diag,
+    // so `chrome --headless --dump-dom` can be used as a tiny style inspector.
+    if (params.get('diag') === '1') {
+      setTimeout(function () {
+        var selectors = [
+          '.dsn-panel', '.dsn-header', '.dsn-header-title', '.dsn-body',
+          '.dsn-tabs', '.dsn-tab', '.dsn-tab.is-active', '.dsn-tab-count',
+          '.dsn-search', '.dsn-search-input', '.dsn-sections', '.dsn-section-chip',
+          '.dsn-section-chip.is-active', '.dsn-section-count',
+          '.dsn-composer', '.dsn-editor', '.dsn-composer-hint', '.dsn-composer-foot',
+          '.dsn-btn-primary', '.dsn-footer', '.dsn-footer-hint',
+          '.dsn-stream', '.dsn-note', '.dsn-note-head', '.dsn-note-age',
+          '.dsn-note-kind', '.dsn-note-source', '.dsn-note-clamp',
+          '.dsn-content', '.dsn-content li', '.dsn-content table th',
+          '.dsn-content table td', '.dsn-content pre', '.dsn-content code',
+          '.dsn-chip-layer', '.dsn-capture-chip', '.dsn-surface', '.dsn-surface-btn',
+        ]
+        var tokens = (window.__DSH_STICKY_BOARD__ && window.__DSH_STICKY_BOARD__.TOKENS) || []
+        var bodyStyle = window.getComputedStyle(document.body)
+        var resolved = {}
+        tokens.forEach(function (name) { resolved[name] = bodyStyle.getPropertyValue(name).trim() })
+        var rows = selectors.map(function (selector) {
+          var node = document.querySelector(selector)
+          if (!node) return { selector: selector, missing: true }
+          var style = window.getComputedStyle(node)
+          var box = node.getBoundingClientRect()
+          return {
+            selector: selector,
+            color: style.color,
+            background: style.backgroundColor,
+            borderColor: style.borderColor,
+            fontSize: style.fontSize,
+            opacity: style.opacity,
+            display: style.display,
+            visibility: style.visibility,
+            zIndex: style.zIndex,
+            box: [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)],
+          }
+        })
+        var diag = document.createElement('pre')
+        diag.id = 'harness-diag'
+        diag.textContent = JSON.stringify({ theme: theme, tokens: resolved, rows: rows }, null, 1)
+        document.body.appendChild(diag)
+      }, 400)
+    }
+  }
+})()
+</script>
+</body>
+</html>

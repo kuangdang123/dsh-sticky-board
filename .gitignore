@@ -1,0 +1,19 @@
+# `client.js` is generated from `src/*.js` by `node build.mjs`, but it is committed
+# on purpose: installing straight from the repository must not require a build.
+
+# Verification artifacts written by the test harnesses.
+tests/visual/dom-http.html
+tests/visual/selftest-dom.html
+tests/visual/*.tmp.png
+
+# npm / pnpm
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
