@@ -1071,6 +1071,49 @@ function NoteCardInner(props) {
     DSN.toast(inserted ? t('status.inserted') : t('status.noSession'), inserted ? 'info' : 'error')
   }
 
+  /**
+   * Insert the note as a real quote block (the host's own QuoteNode), i.e. the
+   * same thing 引用文本 does — the text arrives as a Markdown blockquote. The
+   * note's hidden `origin` only decides the toast wording: DSH quotes pure text,
+   * so a note captured in another conversation still quotes fine here.
+   */
+  function quoteNote() {
+    var target = bridge || DSN.bridge || null
+    var text = note.text || ''
+    if (!text && typeof DSN.htmlToText === 'function') text = DSN.htmlToText(note.html || '')
+    if (!text) return
+    var quoted = false
+    try {
+      if (target && typeof target.quote === 'function') quoted = target.quote(text) === true
+    } catch (error) {
+      DSN.log('quote note failed', error)
+      quoted = false
+    }
+    if (!quoted) {
+      DSN.copyRich(note.html || '', text).then(function (ok) {
+        DSN.toast(ok ? t('status.quotedCopied') : t('status.copyFailed'), ok ? 'info' : 'error')
+      }, function (error) {
+        DSN.log('quote fallback rejected', error)
+        DSN.toast(t('status.copyFailed'), 'error')
+      })
+      return
+    }
+    var handle = null
+    try {
+      handle = target && typeof target.get === 'function' ? target.get() : null
+    } catch (error) {
+      handle = null
+    }
+    var origin = note.origin || null
+    var elsewhere = !!(handle && handle.sessionId && origin && origin.sessionId && origin.sessionId !== handle.sessionId)
+    if (elsewhere) {
+      var name = origin.sessionTitle || '#' + String(origin.sessionId).slice(0, 6)
+      DSN.toast(t('status.quotedOther', { name: name }), 'info')
+      return
+    }
+    DSN.toast(t('status.quoted'), 'info')
+  }
+
   function toggleExpand(event) {
     boardStop(event)
     boardPrevent(event)
@@ -1130,6 +1173,11 @@ function NoteCardInner(props) {
           icon: 'copy',
           label: t('note.copy'),
           onClick: copyNote,
+        }),
+        h(BoardIconButton, {
+          icon: 'quote',
+          label: t('note.quote'),
+          onClick: quoteNote,
         }),
         h(BoardIconButton, {
           icon: 'insert',

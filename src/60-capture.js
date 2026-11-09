@@ -120,6 +120,49 @@
    * the selection lives in the main document, is non-collapsed, carries some
    * content, and does not sit inside our own surfaces or an editable field.
    */
+  /**
+   * Transcript coordinate of the element a selection started in. The chat flow
+   * stamps every node with `data-chat-turn` / `data-chat-node-key` /
+   * `data-chat-anchor-key`; those are the only stable handles DSH exposes, and
+   * they are what a later "回到原文" needs.
+   */
+  function seatOf(element) {
+    if (!element || typeof element.closest !== 'function') return null
+    var node = null
+    try {
+      node = element.closest('[data-chat-node-key]')
+    } catch (error) {
+      DSN.log('seat lookup failed', error)
+      return null
+    }
+    if (!node) {
+      try {
+        node = element.closest('[data-chat-turn]')
+      } catch (error) {
+        DSN.log('turn lookup failed', error)
+        return null
+      }
+    }
+    if (!node) return null
+    function read(name) {
+      var value = ''
+      try {
+        value = node.getAttribute(name) || ''
+      } catch (error) {
+        value = ''
+      }
+      return value || null
+    }
+    var turn = Number(read('data-chat-turn'))
+    var seat = {
+      nodeKey: read('data-chat-node-key'),
+      anchorKey: read('data-chat-anchor-key'),
+      turn: isFinite(turn) && turn >= 0 ? turn : null,
+    }
+    if (!seat.nodeKey && !seat.anchorKey && seat.turn === null) return null
+    return seat
+  }
+
   function readDocumentSelection() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null
     var selection = null
@@ -168,7 +211,7 @@
     } catch (error) {
       DSN.log('selection rect failed', error)
     }
-    return { text: text, html: html, rect: rect }
+    return { text: text, html: html, rect: rect, seat: seatOf(anchorElement) }
   }
 
   /* ---------------------------- chip store -------------------------- */
@@ -442,7 +485,18 @@
           DSN.log('getSession failed', error)
         }
       }
-      var noteId = store.actions.addNote({ html: html, text: text, source: source || null })
+      var seat = info && info.seat ? info.seat : null
+      var origin = null
+      if (typeof DSN.normalizeOrigin === 'function') {
+        origin = DSN.normalizeOrigin({
+          sessionId: source && source.sessionId,
+          sessionTitle: source && source.sessionTitle,
+          turn: seat ? seat.turn : null,
+          nodeKey: seat ? seat.nodeKey : null,
+          anchorKey: seat ? seat.anchorKey : null,
+        })
+      }
+      var noteId = store.actions.addNote({ html: html, text: text, source: source || null, origin: origin })
       if (!noteId) return false
       DSN.toast(translate('note.saved'))
       return true
@@ -937,6 +991,17 @@
     insert: function (html, text, t) {
       return bridgeInsert(html, text, t)
     },
+    /** Quote the text into the active composer exactly like 引用文本 does. */
+    quote: function (text) {
+      try {
+        var handle = activeBridge()
+        if (!handle || typeof handle.quote !== 'function') return false
+        return handle.quote(text) === true
+      } catch (error) {
+        DSN.log('bridge quote failed', error)
+        return false
+      }
+    },
     subscribe: function (listener) {
       if (typeof listener !== 'function') return function () {}
       bridgeBus.listeners.add(listener)
@@ -984,6 +1049,18 @@
         insert: function (html, text) {
           var latest = latestRef.current
           return insertIntoComposer(latest && latest.actions, html, text)
+        },
+        /** Same gesture as 引用文本: the host turns the text into a QuoteNode. */
+        quote: function (text) {
+          var latest = latestRef.current
+          var actions = latest && latest.actions
+          if (!actions || typeof actions.insertQuote !== 'function') return false
+          try {
+            return actions.insertQuote(asText(text)) === true
+          } catch (error) {
+            DSN.log('bridge quote failed', error)
+            return false
+          }
         },
       }
     }, [sessionId, title])
