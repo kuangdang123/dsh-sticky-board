@@ -50,6 +50,7 @@
     '.dsn-float-icon { display: inline-flex; flex: none; color: var(--dsw-alias-label-tertiary, #adb2b8); }',
     '.dsn-float-title { flex: 1 1 auto; min-width: 0; margin: 0; font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }',
     '.dsn-float-actions { display: inline-flex; align-items: center; gap: 1px; flex: none; }',
+    '.dsn-float-prio { display: inline-flex; align-items: center; flex: 0 0 auto; opacity: 0.95; }',
     '.dsn-float-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; margin: 0; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-tertiary, #adb2b8); cursor: pointer; }',
     '.dsn-float-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, 0.06)); color: var(--dsw-alias-label-primary, #1b1b1f); }',
     '.dsn-float-btn:focus-visible { outline: 2px solid var(--dsw-alias-border-l4, rgba(11, 12, 15, 0.2)); outline-offset: -1px; }',
@@ -230,6 +231,10 @@
     },
       h('span', { className: 'dsn-float-icon', 'aria-hidden': 'true' }, h(DSN.Icon, { name: 'note', size: 13 })),
       h('span', { className: 'dsn-float-title' }, title),
+      typeof DSN.PriorityPill === 'function'
+        ? h('span', { className: 'dsn-float-prio', 'data-dsn-nodrag': '1' },
+          h(DSN.PriorityPill, { t: t, priority: note.priority }))
+        : null,
       h('div', { className: 'dsn-float-actions', 'data-dsn-nodrag': '1' },
         h('button', {
           type: 'button',
@@ -249,7 +254,11 @@
       ),
     )
 
-    var body = h('div', { className: 'dsn-float-body' }, h(DSN.Content, { html: note.html, kind: note.kind }))
+    var body = h('div', { className: 'dsn-float-body' },
+      h(DSN.Content, { html: note.html, kind: note.kind }),
+      typeof DSN.CommentThread === 'function'
+        ? h(DSN.CommentThread, { store: store, t: t, note: note, compact: true })
+        : null)
 
     var foot = h('div', { className: 'dsn-float-foot' },
       h('span', { className: 'dsn-float-source' },
