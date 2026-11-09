@@ -80,10 +80,10 @@ plugin_manager action=install_bundle target=<本仓库的绝对路径>
 
 ```powershell
 node build.mjs            # 拼接 src/*.js -> client.js
-node tests/smoke.mjs      # jsdom 集成冒烟测试（129 项）
+node tests/smoke.mjs      # jsdom 集成冒烟测试（139 项）
 node tests/host.mjs       # Host 半：数据路由 / 文件落盘 / 损坏恢复 / 目录迁移认领（39 项）
 node tests/sync.mjs       # 浏览器 ⇄ 文件 端到端同步（18 项）
-node tests/browser.mjs    # 真实 Chrome 端到端自测（33 项 × 亮/暗两套主题）
+node tests/browser.mjs    # 真实 Chrome 端到端自测（34 项 × 亮/暗两套主题）
 node tests/browser.mjs --dark
 ```
 

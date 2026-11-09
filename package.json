@@ -1,6 +1,6 @@
 {
   "name": "dsh-sticky-board",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Sticky notes for the DeepSeek Harness Web GUI: capture chat selections, tables, images and code blocks into categorized notes, then drop them back into any conversation. 便签插件：随手记录、跨对话搬运、分区管理、画中画置顶窗口。",
   "type": "module",
   "license": "MIT",

@@ -59,10 +59,10 @@ On page load the client GETs `/dsh-sticky-board/data` and merges the file with t
 
 ```sh
 node build.mjs          # concatenate src/*.js -> client.js
-node tests/smoke.mjs    # jsdom integration smoke test (129 checks)
+node tests/smoke.mjs    # jsdom integration smoke test (139 checks)
 node tests/host.mjs     # Host half: route, file writes, corruption recovery, directory adoption (39 checks)
 node tests/sync.mjs     # browser <-> file end-to-end sync (18 checks)
-node tests/browser.mjs  # real Chrome end-to-end self-test (33 checks, light and dark)
+node tests/browser.mjs  # real Chrome end-to-end self-test (34 checks, light and dark)
 node tests/browser.mjs --dark
 ```
 
