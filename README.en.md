@@ -14,6 +14,9 @@ A sticky-note board for the DeepSeek Harness Web GUI: capture something from a c
 - **The board itself.** The notes icon at the top-right of the session header (leftmost in that row) opens a floating panel you can type into directly; `Alt+Shift+N` toggles it.
 - **Sections.** An inbox plus custom sections; drag notes between sections, drag to reorder, drag to the trash zone.
 - **Trash.** Deleting is soft: restore, delete permanently, or empty the trash.
+- **Priorities.** Every card carries a priority pill (urgent / high / normal / low, normal by default) you can change in place; cards are colour-coded, the toolbar can filter by priority, and sorting can switch from time to priority while time stays the default.
+- **To-do lists.** Any note can hold a checklist (Enter adds another item, ticking completes it, one click clears the finished ones). The **To-do** tab aggregates every open item across notes, grouped by note and sorted by priority, with search and a hide-finished switch.
+- **Comments on a note.** The comment chip at the foot of a card opens a detail sheet with the body, the checklist, the priority and a Feishu-style comment thread (Enter sends, Shift+Enter breaks the line); comments can be removed and the card shows their count.
 - **Send back to a conversation.** "Insert into composer" puts the note into the current session's composer (plain text); without an active session it falls back to the clipboard.
 - **Drag back into the composer.** Drag a note card onto the composer and release: a blue drop ring and a "release to insert" pill appear, and the note is inserted at the caret as Markdown (tables, code fences, lists and quotes are restored; images become `![alt](src)`).
 - **Drag out into a window.** Release a note card anywhere outside the composer — the transcript, empty space — and the note becomes its own floating window. Move it by the title bar, resize from the corner, collapse or close it; window geometry is stored in the note document (`ui.floaters`) and survives a reload. Dropping on the panel still means reorder / move / trash, and dropping on the composer still means insert.
@@ -55,10 +58,10 @@ On page load the client GETs `/dsh-sticky-board/data` and merges the file with t
 
 ```sh
 node build.mjs          # concatenate src/*.js -> client.js
-node tests/smoke.mjs    # jsdom integration smoke test (83 checks)
+node tests/smoke.mjs    # jsdom integration smoke test (105 checks)
 node tests/host.mjs     # Host half: route, file writes, corruption recovery, directory adoption (39 checks)
 node tests/sync.mjs     # browser <-> file end-to-end sync (18 checks)
-node tests/browser.mjs  # real Chrome end-to-end self-test (27 checks)
+node tests/browser.mjs  # real Chrome end-to-end self-test (31 checks)
 node tests/browser.mjs --dark
 ```
 
