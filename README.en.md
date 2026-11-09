@@ -19,6 +19,7 @@ A sticky-note board for the DeepSeek Harness Web GUI: capture something from a c
 - **To-do lists.** Any note can hold a checklist (Enter adds another item, ticking completes it, one click clears the finished ones). The **To-do** tab aggregates every open item across notes, grouped by note and sorted by priority, with search and a hide-finished switch.
 - **Comments on a note.** The comment chip at the foot of a card opens a detail sheet with the body, the checklist, the priority and a Feishu-style comment thread (Enter sends, Shift+Enter breaks the line); comments can be removed and the card shows their count.
 - **Send back to a conversation.** "Insert into composer" puts the note into the current session's composer (plain text); without an active session it falls back to the clipboard.
+- **Quote back into the composer.** The quote action on a note card inserts the note's text through the host's own quote path — the same one the built-in "Quote text" action uses — so it arrives as a real quote and is sent as a Markdown blockquote. Notes captured from a conversation also keep a hidden origin (session, turn and chat-node coordinates) that is never rendered; quoting one from another conversation adds a hint about where it came from.
 - **Drag back into the composer.** Drag a note card onto the composer and release: a blue drop ring and a "release to insert" pill appear, and the note is inserted at the caret as Markdown (tables, code fences, lists and quotes are restored; images become `![alt](src)`).
 - **Drag out into a window.** Release a note card anywhere outside the composer — the transcript, empty space — and the note becomes its own floating window. Move it by the title bar, resize from the corner, collapse or close it; window geometry is stored in the note document (`ui.floaters`) and survives a reload. The window renders the note body, its priority and its comment thread, and comments can be written right there (same data as the panel). Dropping on the panel still means reorder / move / trash, and dropping on the composer still means insert.
 - **Picture-in-picture.** The PiP button in the panel header puts the board into an always-on-top system window (Chrome / Edge 116+) so notes can be read and copied from other applications.
@@ -59,10 +60,10 @@ On page load the client GETs `/dsh-sticky-board/data` and merges the file with t
 
 ```sh
 node build.mjs          # concatenate src/*.js -> client.js
-node tests/smoke.mjs    # jsdom integration smoke test (139 checks)
+node tests/smoke.mjs    # jsdom integration smoke test (145 checks)
 node tests/host.mjs     # Host half: route, file writes, corruption recovery, directory adoption (39 checks)
 node tests/sync.mjs     # browser <-> file end-to-end sync (18 checks)
-node tests/browser.mjs  # real Chrome end-to-end self-test (34 checks, light and dark)
+node tests/browser.mjs  # real Chrome end-to-end self-test (35 checks, light and dark)
 node tests/browser.mjs --dark
 ```
 
