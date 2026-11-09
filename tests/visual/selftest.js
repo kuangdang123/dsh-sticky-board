@@ -274,6 +274,33 @@ function frame() {
       assert(snapshot().sections.length === before, 'section was not removed')
     })
 
+    /* ---------------------------------------- composer saves and clears */
+    await step('the composer clears after saving with Ctrl+Enter', async function () {
+      openPanel()
+      await sleep(80)
+      var editor = q('.dsn-composer [contenteditable="true"]')
+      assert(editor, 'composer editor missing')
+      var before = liveNotes().length
+      editor.focus()
+      editor.innerHTML = '<p>自测草稿</p>'
+      editor.dispatchEvent(new Event('input', { bubbles: true }))
+      await sleep(200)
+      editor.focus()
+      editor.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', code: 'Enter', ctrlKey: true, bubbles: true, cancelable: true,
+      }))
+      await sleep(200)
+      assert(liveNotes().length === before + 1,
+        'Ctrl+Enter did not save a note: ' + before + ' → ' + liveNotes().length)
+      assert(editor.textContent.replace(/\s+/g, '') === '',
+        'composer still shows text: ' + JSON.stringify(editor.innerHTML))
+      assert(document.activeElement === editor, 'composer lost focus after saving')
+      var saved = liveNotes().filter(function (note) { return String(note.text).indexOf('自测草稿') >= 0 })[0]
+      assert(saved, 'the saved note is missing from the store')
+      store.actions.purgeNote(saved.id)
+      await sleep(100)
+    })
+
     /* --------------------------------------------------------------- trash */
     await step('delete moves a note to trash and restore brings it back', async function () {
       openPanel()
