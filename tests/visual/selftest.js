@@ -601,6 +601,39 @@ function frame() {
       H.surface.hide()
     })
 
+    await step('a note can be quoted back into the composer', async function () {
+      openPanel()
+      var noteId = store.actions.addNote({
+        html: '<p>引用回来的文本</p>',
+        text: '引用回来的文本',
+        origin: { sessionId: 'session-a', sessionTitle: '对话 A', turn: 4, nodeKey: 'message:4' },
+      })
+      var DSN = window.__DSH_STICKY_BOARD__
+      var realGet = DSN.bridge.get
+      var realQuote = DSN.bridge.quote
+      var quoted = ''
+      DSN.bridge.get = function () { return { sessionId: 'session-b', sessionTitle: '对话 B' } }
+      DSN.bridge.quote = function (text) { quoted = text; return true }
+      try {
+        await sleep(160)
+        var card = q('[data-note-id="' + noteId + '"]')
+        assert(card, 'quoted note card missing')
+        var action = qa('button', card).filter(function (node) {
+          return node.getAttribute('aria-label') === t('note.quote')
+        })[0]
+        assert(action, 'quote action missing on the card')
+        click(action)
+        await sleep(260)
+        assert(quoted === '引用回来的文本', 'quoted text mismatch: ' + quoted)
+        assert(qa('.dsn-toast').length > 0, 'no toast after quoting')
+        assert(byLabel(t('note.quote')).length > 0, 'quote label lost')
+      } finally {
+        DSN.bridge.get = realGet
+        DSN.bridge.quote = realQuote
+        store.actions.purgeNote(noteId)
+      }
+    })
+
     await step('chip yields to the chat flow surface', async function () {
       var bubble = q('.bubble')
       assert(bubble, 'fake chat bubble missing')

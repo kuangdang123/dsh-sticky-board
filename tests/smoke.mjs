@@ -890,6 +890,54 @@ if (composerEditor) {
   if (draftNote) store.actions.purgeNote(draftNote.id)
 }
 
+// ------------------------------------ hidden origin + quote-back -----------
+const originProbe = DSN.normalizeOrigin({
+  sessionId: 's-1', sessionTitle: '对话 A', turn: '3', nodeKey: 'message:9', anchorKey: 'flow-9',
+})
+check('origin keeps the transcript coordinate',
+  !!originProbe && originProbe.sessionId === 's-1' && originProbe.turn === 3
+    && originProbe.nodeKey === 'message:9' && originProbe.anchorKey === 'flow-9',
+  JSON.stringify(originProbe))
+check('an empty origin is dropped', DSN.normalizeOrigin({}) === null && DSN.normalizeOrigin(null) === null)
+
+const originNoteId = store.actions.addNote({
+  html: '<p>引用我</p>',
+  text: '引用我',
+  origin: { sessionId: 's-1', sessionTitle: '对话 A', turn: 3, nodeKey: 'message:9' },
+})
+const originNote = noteOf(originNoteId)
+check('a captured note stores its hidden origin',
+  !!originNote && !!originNote.origin && originNote.origin.nodeKey === 'message:9',
+  JSON.stringify(originNote && originNote.origin))
+const originTrip = DSN.normalizeState(JSON.parse(JSON.stringify(store.getSnapshot())), ctx.locale.bind())
+const originTripNote = originTrip.notes.filter((note) => note.id === originNoteId)[0]
+check('origin survives a storage round-trip',
+  !!originTripNote && !!originTripNote.origin && originTripNote.origin.turn === 3,
+  JSON.stringify(originTripNote && originTripNote.origin))
+
+const realBridgeGet = DSN.bridge.get
+const realBridgeQuote = DSN.bridge.quote
+let quotedPayload = ''
+DSN.bridge.get = () => ({ sessionId: 's-2', sessionTitle: '对话 B' })
+DSN.bridge.quote = (value) => { quotedPayload = value; return true }
+flushSync(() => {})
+const originCard = window.document.querySelector('[data-note-id="' + originNoteId + '"]')
+const quoteLabel = ctx.locale.bind()('note.quote')
+const quoteAction = originCard
+  ? Array.prototype.slice.call(originCard.querySelectorAll('button'))
+    .filter((node) => node.getAttribute('aria-label') === quoteLabel)[0]
+  : null
+check('the note card offers a quote action', !!quoteAction,
+  originCard ? originCard.textContent.slice(0, 120) : 'no card')
+if (quoteAction) {
+  flushSync(() => { quoteAction.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+}
+check('quoting hands the note text to the host quote path', quotedPayload === '引用我',
+  JSON.stringify(quotedPayload))
+DSN.bridge.get = realBridgeGet
+DSN.bridge.quote = realBridgeQuote
+store.actions.purgeNote(originNoteId)
+
 // --------------------------------------- one way to add a section ----------
 const addLabel = ctx.locale.bind()('section.add')
 const addControls = Array.prototype.slice

@@ -98,8 +98,32 @@ function normalizeCommentList(raw) {
   return out
 }
 
+/**
+ * Where a captured note came from. The board never renders this; it is the
+ * transcript coordinate the capture saw, kept so a note can be quoted back into
+ * a composer exactly the way 引用文本 does (the quote body is plain text, the
+ * position is only ours to remember).
+ */
+function normalizeOrigin(item) {
+  if (!item || typeof item !== 'object') return null
+  var sessionId = typeof item.sessionId === 'string' && item.sessionId ? item.sessionId : null
+  var nodeKey = typeof item.nodeKey === 'string' && item.nodeKey ? item.nodeKey : null
+  var anchorKey = typeof item.anchorKey === 'string' && item.anchorKey ? item.anchorKey : null
+  var turn = Number(item.turn)
+  var origin = {
+    sessionId: sessionId,
+    sessionTitle: typeof item.sessionTitle === 'string' ? item.sessionTitle.slice(0, 120) : '',
+    turn: isFinite(turn) && turn >= 0 ? Math.round(turn) : null,
+    nodeKey: nodeKey,
+    anchorKey: anchorKey,
+  }
+  if (!origin.sessionId && !origin.nodeKey && !origin.anchorKey && origin.turn === null) return null
+  return origin
+}
+
 DSN.normalizeTaskList = normalizeTaskList
 DSN.normalizeCommentList = normalizeCommentList
+DSN.normalizeOrigin = normalizeOrigin
 
 DSN.normalizeState = function (raw, t) {
   var base = DSN.emptyState(t)
@@ -130,6 +154,7 @@ DSN.normalizeState = function (raw, t) {
       source: item.source && typeof item.source === 'object'
         ? { sessionId: item.source.sessionId || null, sessionTitle: item.source.sessionTitle || '' }
         : null,
+      origin: normalizeOrigin(item.origin),
       createdAt: Number(item.createdAt) || Date.now(),
       updatedAt: Number(item.updatedAt) || Number(item.createdAt) || Date.now(),
       pinned: item.pinned === true,
@@ -480,6 +505,7 @@ DSN.createStore = function (options) {
         title: String(input.title || ''),
         kind: input.kind || DSN.detectKind(html, text),
         source: input.source || null,
+        origin: normalizeOrigin(input.origin),
         createdAt: now,
         updatedAt: now,
         pinned: input.pinned === true,

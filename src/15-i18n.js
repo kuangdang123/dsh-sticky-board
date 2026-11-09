@@ -30,6 +30,7 @@ DSN.zh = {
 
   'note.copy': '复制',
   'note.insert': '插入到输入框',
+  'note.quote': '引用到输入框',
   'note.pin': '置顶',
   'note.unpin': '取消置顶',
   'note.edit': '编辑',
@@ -67,6 +68,9 @@ DSN.zh = {
   'status.copyFailed': '复制失败，请手动选中复制',
   'status.copied': '已复制',
   'status.inserted': '已插入到输入框',
+  'status.quoted': '已作为引用插入输入框',
+  'status.quotedOther': '已插入引用（原文来自另一个会话：{name}）',
+  'status.quotedCopied': '当前没有可用的输入框，已复制原文',
   'status.noSession': '当前没有可插入的会话，已复制到剪贴板',
 
   'sync.idle': '本地',
@@ -125,6 +129,7 @@ DSN.en = {
 
   'note.copy': 'Copy',
   'note.insert': 'Insert into composer',
+  'note.quote': 'Quote into composer',
   'note.pin': 'Pin',
   'note.unpin': 'Unpin',
   'note.edit': 'Edit',
@@ -162,6 +167,9 @@ DSN.en = {
   'status.copyFailed': 'Copy failed, please select and copy manually',
   'status.copied': 'Copied',
   'status.inserted': 'Inserted into the composer',
+  'status.quoted': 'Quoted into the composer',
+  'status.quotedOther': 'Quoted — the source lives in another conversation: {name}',
+  'status.quotedCopied': 'No composer available — copied the text instead',
   'status.noSession': 'No chat to insert into — copied to the clipboard instead',
 
   'sync.idle': 'Local',

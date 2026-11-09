@@ -319,6 +319,7 @@ DSN.zh = {
 
   'note.copy': '复制',
   'note.insert': '插入到输入框',
+  'note.quote': '引用到输入框',
   'note.pin': '置顶',
   'note.unpin': '取消置顶',
   'note.edit': '编辑',
@@ -356,6 +357,9 @@ DSN.zh = {
   'status.copyFailed': '复制失败，请手动选中复制',
   'status.copied': '已复制',
   'status.inserted': '已插入到输入框',
+  'status.quoted': '已作为引用插入输入框',
+  'status.quotedOther': '已插入引用（原文来自另一个会话：{name}）',
+  'status.quotedCopied': '当前没有可用的输入框，已复制原文',
   'status.noSession': '当前没有可插入的会话，已复制到剪贴板',
 
   'sync.idle': '本地',
@@ -414,6 +418,7 @@ DSN.en = {
 
   'note.copy': 'Copy',
   'note.insert': 'Insert into composer',
+  'note.quote': 'Quote into composer',
   'note.pin': 'Pin',
   'note.unpin': 'Unpin',
   'note.edit': 'Edit',
@@ -451,6 +456,9 @@ DSN.en = {
   'status.copyFailed': 'Copy failed, please select and copy manually',
   'status.copied': 'Copied',
   'status.inserted': 'Inserted into the composer',
+  'status.quoted': 'Quoted into the composer',
+  'status.quotedOther': 'Quoted — the source lives in another conversation: {name}',
+  'status.quotedCopied': 'No composer available — copied the text instead',
   'status.noSession': 'No chat to insert into — copied to the clipboard instead',
 
   'sync.idle': 'Local',
@@ -605,8 +613,32 @@ function normalizeCommentList(raw) {
   return out
 }
 
+/**
+ * Where a captured note came from. The board never renders this; it is the
+ * transcript coordinate the capture saw, kept so a note can be quoted back into
+ * a composer exactly the way 引用文本 does (the quote body is plain text, the
+ * position is only ours to remember).
+ */
+function normalizeOrigin(item) {
+  if (!item || typeof item !== 'object') return null
+  var sessionId = typeof item.sessionId === 'string' && item.sessionId ? item.sessionId : null
+  var nodeKey = typeof item.nodeKey === 'string' && item.nodeKey ? item.nodeKey : null
+  var anchorKey = typeof item.anchorKey === 'string' && item.anchorKey ? item.anchorKey : null
+  var turn = Number(item.turn)
+  var origin = {
+    sessionId: sessionId,
+    sessionTitle: typeof item.sessionTitle === 'string' ? item.sessionTitle.slice(0, 120) : '',
+    turn: isFinite(turn) && turn >= 0 ? Math.round(turn) : null,
+    nodeKey: nodeKey,
+    anchorKey: anchorKey,
+  }
+  if (!origin.sessionId && !origin.nodeKey && !origin.anchorKey && origin.turn === null) return null
+  return origin
+}
+
 DSN.normalizeTaskList = normalizeTaskList
 DSN.normalizeCommentList = normalizeCommentList
+DSN.normalizeOrigin = normalizeOrigin
 
 DSN.normalizeState = function (raw, t) {
   var base = DSN.emptyState(t)
@@ -637,6 +669,7 @@ DSN.normalizeState = function (raw, t) {
       source: item.source && typeof item.source === 'object'
         ? { sessionId: item.source.sessionId || null, sessionTitle: item.source.sessionTitle || '' }
         : null,
+      origin: normalizeOrigin(item.origin),
       createdAt: Number(item.createdAt) || Date.now(),
       updatedAt: Number(item.updatedAt) || Number(item.createdAt) || Date.now(),
       pinned: item.pinned === true,
@@ -987,6 +1020,7 @@ DSN.createStore = function (options) {
         title: String(input.title || ''),
         kind: input.kind || DSN.detectKind(html, text),
         source: input.source || null,
+        origin: normalizeOrigin(input.origin),
         createdAt: now,
         updatedAt: now,
         pinned: input.pinned === true,
@@ -6187,6 +6221,49 @@ function NoteCardInner(props) {
     DSN.toast(inserted ? t('status.inserted') : t('status.noSession'), inserted ? 'info' : 'error')
   }
 
+  /**
+   * Insert the note as a real quote block (the host's own QuoteNode), i.e. the
+   * same thing 引用文本 does — the text arrives as a Markdown blockquote. The
+   * note's hidden `origin` only decides the toast wording: DSH quotes pure text,
+   * so a note captured in another conversation still quotes fine here.
+   */
+  function quoteNote() {
+    var target = bridge || DSN.bridge || null
+    var text = note.text || ''
+    if (!text && typeof DSN.htmlToText === 'function') text = DSN.htmlToText(note.html || '')
+    if (!text) return
+    var quoted = false
+    try {
+      if (target && typeof target.quote === 'function') quoted = target.quote(text) === true
+    } catch (error) {
+      DSN.log('quote note failed', error)
+      quoted = false
+    }
+    if (!quoted) {
+      DSN.copyRich(note.html || '', text).then(function (ok) {
+        DSN.toast(ok ? t('status.quotedCopied') : t('status.copyFailed'), ok ? 'info' : 'error')
+      }, function (error) {
+        DSN.log('quote fallback rejected', error)
+        DSN.toast(t('status.copyFailed'), 'error')
+      })
+      return
+    }
+    var handle = null
+    try {
+      handle = target && typeof target.get === 'function' ? target.get() : null
+    } catch (error) {
+      handle = null
+    }
+    var origin = note.origin || null
+    var elsewhere = !!(handle && handle.sessionId && origin && origin.sessionId && origin.sessionId !== handle.sessionId)
+    if (elsewhere) {
+      var name = origin.sessionTitle || '#' + String(origin.sessionId).slice(0, 6)
+      DSN.toast(t('status.quotedOther', { name: name }), 'info')
+      return
+    }
+    DSN.toast(t('status.quoted'), 'info')
+  }
+
   function toggleExpand(event) {
     boardStop(event)
     boardPrevent(event)
@@ -6246,6 +6323,11 @@ function NoteCardInner(props) {
           icon: 'copy',
           label: t('note.copy'),
           onClick: copyNote,
+        }),
+        h(BoardIconButton, {
+          icon: 'quote',
+          label: t('note.quote'),
+          onClick: quoteNote,
         }),
         h(BoardIconButton, {
           icon: 'insert',
@@ -7890,6 +7972,49 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
    * the selection lives in the main document, is non-collapsed, carries some
    * content, and does not sit inside our own surfaces or an editable field.
    */
+  /**
+   * Transcript coordinate of the element a selection started in. The chat flow
+   * stamps every node with `data-chat-turn` / `data-chat-node-key` /
+   * `data-chat-anchor-key`; those are the only stable handles DSH exposes, and
+   * they are what a later "回到原文" needs.
+   */
+  function seatOf(element) {
+    if (!element || typeof element.closest !== 'function') return null
+    var node = null
+    try {
+      node = element.closest('[data-chat-node-key]')
+    } catch (error) {
+      DSN.log('seat lookup failed', error)
+      return null
+    }
+    if (!node) {
+      try {
+        node = element.closest('[data-chat-turn]')
+      } catch (error) {
+        DSN.log('turn lookup failed', error)
+        return null
+      }
+    }
+    if (!node) return null
+    function read(name) {
+      var value = ''
+      try {
+        value = node.getAttribute(name) || ''
+      } catch (error) {
+        value = ''
+      }
+      return value || null
+    }
+    var turn = Number(read('data-chat-turn'))
+    var seat = {
+      nodeKey: read('data-chat-node-key'),
+      anchorKey: read('data-chat-anchor-key'),
+      turn: isFinite(turn) && turn >= 0 ? turn : null,
+    }
+    if (!seat.nodeKey && !seat.anchorKey && seat.turn === null) return null
+    return seat
+  }
+
   function readDocumentSelection() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null
     var selection = null
@@ -7938,7 +8063,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     } catch (error) {
       DSN.log('selection rect failed', error)
     }
-    return { text: text, html: html, rect: rect }
+    return { text: text, html: html, rect: rect, seat: seatOf(anchorElement) }
   }
 
   /* ---------------------------- chip store -------------------------- */
@@ -8212,7 +8337,18 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
           DSN.log('getSession failed', error)
         }
       }
-      var noteId = store.actions.addNote({ html: html, text: text, source: source || null })
+      var seat = info && info.seat ? info.seat : null
+      var origin = null
+      if (typeof DSN.normalizeOrigin === 'function') {
+        origin = DSN.normalizeOrigin({
+          sessionId: source && source.sessionId,
+          sessionTitle: source && source.sessionTitle,
+          turn: seat ? seat.turn : null,
+          nodeKey: seat ? seat.nodeKey : null,
+          anchorKey: seat ? seat.anchorKey : null,
+        })
+      }
+      var noteId = store.actions.addNote({ html: html, text: text, source: source || null, origin: origin })
       if (!noteId) return false
       DSN.toast(translate('note.saved'))
       return true
@@ -8707,6 +8843,17 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     insert: function (html, text, t) {
       return bridgeInsert(html, text, t)
     },
+    /** Quote the text into the active composer exactly like 引用文本 does. */
+    quote: function (text) {
+      try {
+        var handle = activeBridge()
+        if (!handle || typeof handle.quote !== 'function') return false
+        return handle.quote(text) === true
+      } catch (error) {
+        DSN.log('bridge quote failed', error)
+        return false
+      }
+    },
     subscribe: function (listener) {
       if (typeof listener !== 'function') return function () {}
       bridgeBus.listeners.add(listener)
@@ -8754,6 +8901,18 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
         insert: function (html, text) {
           var latest = latestRef.current
           return insertIntoComposer(latest && latest.actions, html, text)
+        },
+        /** Same gesture as 引用文本: the host turns the text into a QuoteNode. */
+        quote: function (text) {
+          var latest = latestRef.current
+          var actions = latest && latest.actions
+          if (!actions || typeof actions.insertQuote !== 'function') return false
+          try {
+            return actions.insertQuote(asText(text)) === true
+          } catch (error) {
+            DSN.log('bridge quote failed', error)
+            return false
+          }
         },
       }
     }, [sessionId, title])
