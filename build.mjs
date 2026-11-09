@@ -20,6 +20,7 @@ const ORDER = [
   '40-styles.js',
   '45-panel.js',
   '50-board.js',
+  '55-note-extra.js',
   '60-capture.js',
   '65-drop.js',
   '68-float.js',

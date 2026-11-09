@@ -72,6 +72,44 @@
   }
 
   /**
+   * Union two lists of `{ id }` entries, keeping the local copy of a duplicate.
+   * @param mine - local entries.
+   * @param theirs - remote entries.
+   * @returns the union, local order first.
+   */
+  function unionById(mine, theirs) {
+    var out = Array.isArray(mine) ? mine.slice() : []
+    var known = {}
+    for (var i = 0; i < out.length; i += 1) known[out[i].id] = true
+    var extra = Array.isArray(theirs) ? theirs : []
+    for (var j = 0; j < extra.length; j += 1) {
+      if (known[extra[j].id]) continue
+      known[extra[j].id] = true
+      out.push(extra[j])
+    }
+    return out
+  }
+
+  /**
+   * Merge one note that both sides hold: the newer stamp owns the text and the
+   * flags, but checklists and comments are unions — those are the two places
+   * where two machines legitimately add different items to the same note.
+   * @param current - the local note.
+   * @param candidate - the stored note.
+   * @returns the merged note.
+   */
+  function mergeNote(current, candidate) {
+    var newer = noteStamp(candidate) > noteStamp(current) ? candidate : current
+    var older = newer === candidate ? current : candidate
+    var merged = Object.assign({}, newer)
+    merged.tasks = unionById(newer.tasks, older.tasks)
+    var comments = unionById(newer.comments, older.comments)
+    comments.sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0) })
+    merged.comments = comments
+    return merged
+  }
+
+  /**
    * Union two board documents: sections by id, notes by id (newer stamp wins).
    * The local document owns the UI state, because it describes this window.
    * @param local - this window's document.
@@ -106,7 +144,7 @@
       }
       var current = notes[index]
       // The newer edit wins; a delete is an edit, so a later delete also wins.
-      if (noteStamp(candidate) > noteStamp(current)) notes[index] = candidate
+      notes[index] = mergeNote(current, candidate)
     }
 
     notes.sort(function (a, b) {

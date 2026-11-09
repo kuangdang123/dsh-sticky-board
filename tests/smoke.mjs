@@ -691,7 +691,88 @@ if (sidebarTabs.length === 1) {
 }
 sidebarDispose()
 
-// --------------------------------------------------------------- cleanup ---
+// ------------------------------------------------ priorities, tasks, comments
+const noteOf = (id) => store.getSnapshot().notes.filter((note) => note.id === id)[0]
+const extraId = store.actions.addNote({ html: '<p>extras</p>', text: 'extras' })
+check('a new note starts at the normal priority', noteOf(extraId).priority === 'normal',
+  noteOf(extraId) && noteOf(extraId).priority)
+store.actions.setPriority(extraId, 'urgent')
+check('priority can be raised', noteOf(extraId).priority === 'urgent')
+store.actions.setPriority(extraId, 'nonsense')
+check('an unknown priority falls back to normal', noteOf(extraId).priority === 'normal')
+store.actions.setPriority(extraId, 'high')
+
+const taskId = store.actions.addTask(extraId, '  第一条   待办  ')
+check('addTask trims and stores the item',
+  !!taskId && noteOf(extraId).tasks.length === 1 && noteOf(extraId).tasks[0].text === '第一条 待办',
+  JSON.stringify(noteOf(extraId).tasks))
+check('a blank task is refused', store.actions.addTask(extraId, '   ') === null)
+store.actions.toggleTask(extraId, taskId)
+check('toggleTask marks it done', noteOf(extraId).tasks[0].done === true)
+check('the update stamp moved with the checklist',
+  noteOf(extraId).updatedAt >= noteOf(extraId).createdAt)
+store.actions.clearDoneTasks(extraId)
+check('clearDoneTasks drops the finished item', noteOf(extraId).tasks.length === 0)
+const secondTask = store.actions.addTask(extraId, 'keep me')
+store.actions.removeTask(extraId, secondTask)
+check('removeTask deletes the item', noteOf(extraId).tasks.length === 0)
+
+const commentId = store.actions.addComment(extraId, '<b>不错</b>', '不错')
+check('addComment stores a sanitized comment',
+  !!commentId && noteOf(extraId).comments.length === 1 && noteOf(extraId).comments[0].html.indexOf('<b>') >= 0,
+  JSON.stringify(noteOf(extraId).comments))
+check('an empty comment is refused', store.actions.addComment(extraId, '<p>  </p>', '  ') === null)
+store.actions.removeComment(extraId, commentId)
+check('removeComment deletes the comment', noteOf(extraId).comments.length === 0)
+
+// Round-trip: the document must survive storage and the Host file unchanged.
+store.actions.addTask(extraId, '持久化待办')
+store.actions.addComment(extraId, '<p>持久化评论</p>', '持久化评论')
+const roundTrip = DSN.normalizeState(JSON.parse(JSON.stringify(store.getSnapshot())), mergeDict)
+const roundTripNote = roundTrip.notes.filter((note) => note.id === extraId)[0]
+check('normalizeState keeps the priority', roundTripNote.priority === 'high', roundTripNote.priority)
+check('normalizeState keeps the checklist', roundTripNote.tasks.length === 1 && roundTripNote.tasks[0].text === '持久化待办')
+check('normalizeState keeps the comments', roundTripNote.comments.length === 1)
+check('an unknown priority string normalizes to normal',
+  DSN.normalizeState({ notes: [{ id: 'x', priority: 'bogus' }] }).notes[0].priority === 'normal')
+
+// Merging two machines must not lose comments someone else wrote.
+const unionMerge = DSN.mergeStates(
+  {
+    sections: [{ id: 'sec-inbox', name: 'Inbox', order: 0 }],
+    notes: [{
+      id: 'shared', sectionId: 'sec-inbox', html: '<p>local</p>', text: 'local', updatedAt: 10,
+      priority: 'high',
+      tasks: [{ id: 't-local', text: 'mine', done: false }],
+      comments: [{ id: 'c-local', html: '<p>mine</p>', text: 'mine', createdAt: 5 }],
+    }],
+    ui: { activeSectionId: 'sec-inbox' },
+  },
+  {
+    sections: [{ id: 'sec-inbox', name: 'Inbox', order: 0 }],
+    notes: [{
+      id: 'shared', sectionId: 'sec-inbox', html: '<p>remote</p>', text: 'remote', updatedAt: 20,
+      priority: 'urgent',
+      tasks: [{ id: 't-remote', text: 'theirs', done: true }],
+      comments: [{ id: 'c-remote', html: '<p>theirs</p>', text: 'theirs', createdAt: 30 }],
+    }],
+    ui: { activeSectionId: 'sec-inbox' },
+  },
+  mergeDict,
+)
+const shared = unionMerge.notes.filter((note) => note.id === 'shared')[0]
+check('merge takes the newer body', shared.text === 'remote', shared.text)
+check('merge takes the newer priority', shared.priority === 'urgent', shared.priority)
+check('merge unions the checklists by id', shared.tasks.length === 2,
+  JSON.stringify(shared.tasks.map((task) => task.id)))
+check('merge unions the comments by id', shared.comments.length === 2,
+  JSON.stringify(shared.comments.map((comment) => comment.id)))
+check('merged comments stay in time order', shared.comments[0].createdAt <= shared.comments[1].createdAt)
+
+store.actions.purgeNote(extraId)
+check('the temporary note is gone', !noteOf(extraId))
+
+// ------------------------------------------------------------------ cleanup ---
 let disposeError = null
 try { dispose() } catch (error) { disposeError = error }
 check('dispose() does not throw', disposeError === null, disposeError && String(disposeError))

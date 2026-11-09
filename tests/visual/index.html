@@ -243,9 +243,36 @@
     if (scene === 'search') store.actions.setSearch('拖拽')
     if (scene === 'empty') store.actions.replaceState({ notes: [], sections: [{ id: 'sec-inbox', name: '收集箱', order: 0 }] })
     store.actions.setActiveSection(store.getSnapshot().sections[0].id)
+    // Priorities, checklists and comments — the three note-level surfaces.
+    var seeded = store.getSnapshot().notes
+    function seedByTitle(title) {
+      for (var s = 0; s < seeded.length; s += 1) if (seeded[s].title === title) return seeded[s]
+      return null
+    }
+    var designNote = seedByTitle('设计目标')
+    var tableNote = seedByTitle('能力对照表')
+    var todoNote = seedByTitle('待办')
+    if (designNote) {
+      store.actions.setPriority(designNote.id, 'high')
+      store.actions.addComment(designNote.id, '<p>这三条就是验收标准，不要再往下加需求了。</p>', '这三条就是验收标准')
+      store.actions.addComment(designNote.id, '<p>跨会话那条我这边已经验证过了。</p>', '跨会话那条我这边已经验证过了')
+    }
+    if (tableNote) store.actions.setPriority(tableNote.id, 'urgent')
+    if (todoNote) {
+      store.actions.setPriority(todoNote.id, 'low')
+      store.actions.addTask(todoNote.id, '接进 better sidebar 的标签页')
+      store.actions.addTask(todoNote.id, '导出全部便签为 Markdown')
+      store.actions.addTask(todoNote.id, '补一份使用说明')
+      var seededTasks = store.getSnapshot().notes.filter(function (note) { return note.id === todoNote.id })[0]
+      if (seededTasks && seededTasks.tasks && seededTasks.tasks[0]) {
+        store.actions.toggleTask(todoNote.id, seededTasks.tasks[0].id)
+      }
+    }
     // Switching sections resets the view to the board, so the trash scene has to
     // be applied after the active section is settled.
     if (scene === 'trash') store.actions.setView('trash')
+    if (scene === 'tasks') store.actions.setView('tasks')
+    if (scene === 'sheet' && designNote) store.actions.setDetail(designNote.id)
     var size = String(params.get('panel') || '').split('x')
     if (size.length === 2) {
       var panelWidth = parseInt(size[0], 10)

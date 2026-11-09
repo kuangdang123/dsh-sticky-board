@@ -9,6 +9,18 @@ DSN.STORAGE_KEY = 'dsh-notes/v1'
 DSN.CHANNEL_NAME = '@@DSN_STORE_KEY@@'
 DSN.MAX_NOTES = 800
 DSN.MAX_HTML = 600000
+/**
+ * Priority is a four-step scale; `normal` is the default so an untouched board
+ * looks exactly like it always did. Higher rank sorts first.
+ */
+DSN.PRIORITIES = ['urgent', 'high', 'normal', 'low']
+DSN.DEFAULT_PRIORITY = 'normal'
+DSN.PRIORITY_RANK = { urgent: 3, high: 2, normal: 1, low: 0 }
+/** Checklists and comment threads are bounded so one note cannot blow the document up. */
+DSN.MAX_TASKS = 60
+DSN.MAX_TASK_TEXT = 200
+DSN.MAX_COMMENTS = 80
+DSN.MAX_COMMENT_HTML = 4000
 /** Detached note windows: how many may float at once, and their size bounds. */
 DSN.MAX_FLOATERS = 8
 DSN.FLOAT_W = 360
@@ -34,9 +46,60 @@ DSN.emptyState = function (t) {
       search: '',
       seen: false,
       floaters: [],
+      sort: 'time',
+      priorityFilter: 'all',
+      hideDone: false,
+      detailNoteId: null,
     },
   }
 }
+
+/** One checklist item: plain text, so it stays readable in the JSON document. */
+function normalizeTask(item) {
+  if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !item.id) return null
+  return {
+    id: item.id,
+    text: String(item.text == null ? '' : item.text).slice(0, DSN.MAX_TASK_TEXT),
+    done: item.done === true,
+  }
+}
+
+/** One comment: rich text, the same sanitized subset every other surface uses. */
+function normalizeComment(item) {
+  if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !item.id) return null
+  var html = typeof item.html === 'string' ? item.html.slice(0, DSN.MAX_COMMENT_HTML) : ''
+  var text = typeof item.text === 'string' ? item.text : ''
+  return {
+    id: item.id,
+    html: html,
+    text: text,
+    createdAt: Number(item.createdAt) || Date.now(),
+  }
+}
+
+function normalizeTaskList(raw) {
+  var list = Array.isArray(raw) ? raw : []
+  var out = []
+  for (var i = 0; i < list.length && out.length < DSN.MAX_TASKS; i += 1) {
+    var task = normalizeTask(list[i])
+    if (task) out.push(task)
+  }
+  return out
+}
+
+function normalizeCommentList(raw) {
+  var list = Array.isArray(raw) ? raw : []
+  var out = []
+  for (var i = 0; i < list.length && out.length < DSN.MAX_COMMENTS; i += 1) {
+    var comment = normalizeComment(list[i])
+    if (comment) out.push(comment)
+  }
+  out.sort(function (a, b) { return a.createdAt - b.createdAt })
+  return out
+}
+
+DSN.normalizeTaskList = normalizeTaskList
+DSN.normalizeCommentList = normalizeCommentList
 
 DSN.normalizeState = function (raw, t) {
   var base = DSN.emptyState(t)
@@ -71,12 +134,19 @@ DSN.normalizeState = function (raw, t) {
       updatedAt: Number(item.updatedAt) || Number(item.createdAt) || Date.now(),
       pinned: item.pinned === true,
       deletedAt: Number(item.deletedAt) || null,
+      priority: DSN.PRIORITY_RANK[item.priority] === undefined ? DSN.DEFAULT_PRIORITY : item.priority,
+      tasks: normalizeTaskList(item.tasks),
+      comments: normalizeCommentList(item.comments),
     }
   }) : []
 
   var ui = Object.assign({}, base.ui, raw.ui && typeof raw.ui === 'object' ? raw.ui : {})
   if (!knownSections.has(ui.activeSectionId)) ui.activeSectionId = sections[0].id
-  if (ui.view !== 'trash') ui.view = 'board'
+  if (ui.view !== 'trash' && ui.view !== 'tasks') ui.view = 'board'
+  ui.sort = ui.sort === 'priority' ? 'priority' : 'time'
+  ui.priorityFilter = DSN.PRIORITY_RANK[ui.priorityFilter] === undefined ? 'all' : ui.priorityFilter
+  ui.hideDone = ui.hideDone === true
+  ui.detailNoteId = typeof ui.detailNoteId === 'string' && ui.detailNoteId ? ui.detailNoteId : null
   var panel = ui.panel
   ui.panel = panel && typeof panel === 'object'
     && isFinite(panel.x) && isFinite(panel.y) && isFinite(panel.w) && isFinite(panel.h)
@@ -234,13 +304,50 @@ DSN.createStore = function (options) {
       })
     },
     setView: function (view) {
+      var next = view === 'trash' || view === 'tasks' ? view : 'board'
       update(function (current) {
-        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { view: view === 'trash' ? 'trash' : 'board' }) })
+        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { view: next }) })
       })
     },
     setSearch: function (query) {
       update(function (current) {
         return Object.assign({}, current, { ui: Object.assign({}, current.ui, { search: String(query || '') }) })
+      })
+    },
+    /** Ordering of the visible notes: the historical time order, or by priority. */
+    setSort: function (sort) {
+      var next = sort === 'priority' ? 'priority' : 'time'
+      update(function (current) {
+        if (current.ui.sort === next) return current
+        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { sort: next }) })
+      })
+    },
+    /** `'all'` or one of DSN.PRIORITIES. */
+    setPriorityFilter: function (priority) {
+      var next = DSN.PRIORITY_RANK[priority] === undefined ? 'all' : priority
+      update(function (current) {
+        if (current.ui.priorityFilter === next) return current
+        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { priorityFilter: next }) })
+      })
+    },
+    setHideDone: function (hide) {
+      update(function (current) {
+        var next = hide === true
+        if (current.ui.hideDone === next) return current
+        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { hideDone: next }) })
+      })
+    },
+    toggleHideDone: function () {
+      update(function (current) {
+        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { hideDone: !current.ui.hideDone }) })
+      })
+    },
+    /** Which note is open in the detail/comment sheet, or null. */
+    setDetail: function (noteId) {
+      var next = typeof noteId === 'string' && noteId ? noteId : null
+      update(function (current) {
+        if (current.ui.detailNoteId === next) return current
+        return Object.assign({}, current, { ui: Object.assign({}, current.ui, { detailNoteId: next }) })
       })
     },
     /* -------------------- detached note windows ---------------------- */
@@ -377,6 +484,9 @@ DSN.createStore = function (options) {
         updatedAt: now,
         pinned: input.pinned === true,
         deletedAt: null,
+        priority: DSN.PRIORITY_RANK[input.priority] === undefined ? DSN.DEFAULT_PRIORITY : input.priority,
+        tasks: normalizeTaskList(input.tasks),
+        comments: normalizeCommentList(input.comments),
       }
       var notes = state.notes.slice()
       if (notes.length >= DSN.MAX_NOTES) {
@@ -457,6 +567,108 @@ DSN.createStore = function (options) {
       withNotes(function (note) {
         if (note.id !== noteId) return note
         return Object.assign({}, note, { pinned: !note.pinned })
+      })
+    },
+    /* -------------------- priority ---------------------- */
+    /** `'low' | 'normal' | 'high' | 'urgent'`; anything else falls back to normal. */
+    setPriority: function (noteId, priority) {
+      var next = DSN.PRIORITY_RANK[priority] === undefined ? DSN.DEFAULT_PRIORITY : priority
+      withNotes(function (note) {
+        if (note.id !== noteId || note.priority === next) return note
+        return Object.assign({}, note, { priority: next, updatedAt: Date.now() })
+      })
+    },
+    /* -------------------- checklist --------------------- */
+    addTask: function (noteId, text) {
+      var value = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, DSN.MAX_TASK_TEXT)
+      if (!value) return null
+      var taskId = null
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var tasks = (note.tasks || []).slice()
+        if (tasks.length >= DSN.MAX_TASKS) return note
+        taskId = DSN.uid('task')
+        tasks.push({ id: taskId, text: value, done: false })
+        return Object.assign({}, note, { tasks: tasks, updatedAt: Date.now() })
+      })
+      return taskId
+    },
+    setTaskText: function (noteId, taskId, text) {
+      var value = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, DSN.MAX_TASK_TEXT)
+      if (!value) return
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var found = false
+        var tasks = (note.tasks || []).map(function (task) {
+          if (task.id !== taskId || task.text === value) return task
+          found = true
+          return Object.assign({}, task, { text: value })
+        })
+        return found ? Object.assign({}, note, { tasks: tasks, updatedAt: Date.now() }) : note
+      })
+    },
+    toggleTask: function (noteId, taskId) {
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var found = false
+        var tasks = (note.tasks || []).map(function (task) {
+          if (task.id !== taskId) return task
+          found = true
+          return Object.assign({}, task, { done: !task.done })
+        })
+        return found ? Object.assign({}, note, { tasks: tasks, updatedAt: Date.now() }) : note
+      })
+    },
+    removeTask: function (noteId, taskId) {
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var tasks = (note.tasks || []).filter(function (task) { return task.id !== taskId })
+        if (tasks.length === (note.tasks || []).length) return note
+        return Object.assign({}, note, { tasks: tasks, updatedAt: Date.now() })
+      })
+    },
+    /** Drop every finished item so a long checklist can be reset in one click. */
+    clearDoneTasks: function (noteId) {
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var tasks = (note.tasks || []).filter(function (task) { return !task.done })
+        if (tasks.length === (note.tasks || []).length) return note
+        return Object.assign({}, note, { tasks: tasks, updatedAt: Date.now() })
+      })
+    },
+    /* -------------------- comments ---------------------- */
+    addComment: function (noteId, html, text) {
+      var raw = typeof html === 'string' ? html : ''
+      var safe = ''
+      try {
+        safe = typeof DSN.sanitizeHtml === 'function' ? DSN.sanitizeHtml(raw) : raw
+      } catch (error) {
+        DSN.log('comment sanitize failed', error)
+        safe = ''
+      }
+      var plain = typeof text === 'string' && text
+        ? text
+        : (typeof DSN.htmlToText === 'function' ? DSN.htmlToText(safe) : '')
+      plain = String(plain || '').trim()
+      var body = safe.length > DSN.MAX_COMMENT_HTML ? safe.slice(0, DSN.MAX_COMMENT_HTML) : safe
+      if (typeof DSN.htmlToText === 'function' && !DSN.htmlToText(body).trim()) return null
+      var commentId = null
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var comments = (note.comments || []).slice()
+        if (comments.length >= DSN.MAX_COMMENTS) return note
+        commentId = DSN.uid('cmt')
+        comments.push({ id: commentId, html: body, text: plain, createdAt: Date.now() })
+        return Object.assign({}, note, { comments: comments, updatedAt: Date.now() })
+      })
+      return commentId
+    },
+    removeComment: function (noteId, commentId) {
+      withNotes(function (note) {
+        if (note.id !== noteId) return note
+        var comments = (note.comments || []).filter(function (item) { return item.id !== commentId })
+        if (comments.length === (note.comments || []).length) return note
+        return Object.assign({}, note, { comments: comments, updatedAt: Date.now() })
       })
     },
     /** Move a note into `sectionId`, placing it before `beforeId` when given. */

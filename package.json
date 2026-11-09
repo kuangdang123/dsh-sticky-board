@@ -1,20 +1,20 @@
 {
   "name": "dsh-sticky-board",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sticky notes for the DeepSeek Harness Web GUI: capture chat selections, tables, images and code blocks into categorized notes, then drop them back into any conversation. 便签插件：随手记录、跨对话搬运、分区管理、画中画置顶窗口。",
   "type": "module",
   "license": "MIT",
   "author": {
-    "name": "guangdang",
-    "url": "https://github.com/guangdang"
+    "name": "kuangdang123",
+    "url": "https://github.com/kuangdang123"
   },
-  "homepage": "https://github.com/guangdang/dsh-sticky-board#readme",
+  "homepage": "https://github.com/kuangdang123/dsh-sticky-board#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/guangdang/dsh-sticky-board.git"
+    "url": "git+https://github.com/kuangdang123/dsh-sticky-board.git"
   },
   "bugs": {
-    "url": "https://github.com/guangdang/dsh-sticky-board/issues"
+    "url": "https://github.com/kuangdang123/dsh-sticky-board/issues"
   },
   "keywords": [
     "dsh",
@@ -41,6 +41,7 @@
     "locale",
     "README.md",
     "README.en.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {

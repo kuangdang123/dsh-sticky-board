@@ -2,9 +2,13 @@
 
 [English](./README.en.md)
 
-DSH Web UI 的便签插件：**随手记**下对话里的内容，**跨会话搬运**，分区管理，表格 / 图片 / 代码原样保留，还能放进**置顶画中画窗口**里跨应用使用。
+DSH Web UI 的便签插件：**随手记**下对话里的内容，**跨会话搬运**，分区管理，表格 / 图片 / 代码原样保留，带**优先级**、**待办清单**与**便签评论**，还能放进**置顶画中画窗口**里跨应用使用。
 
 ![分类便签](assets/board-light.png)
+
+| 便签详情与评论 | 待办总览 |
+| --- | --- |
+| ![便签详情](assets/note-detail.png) | ![待办总览](assets/tasks-view.png) |
 
 | 选中对话文本 | 拖进输入框 | 拖出独立窗口 |
 | --- | --- | --- |
@@ -21,6 +25,9 @@ DSH Web UI 的便签插件：**随手记**下对话里的内容，**跨会话搬
 - **图片右键存便签**：在对话里渲染出来的图片上右键，菜单里除了「复制图片 / 下载 / 在文件夹中显示」，还多一项「存入便签」——图片按 data URL 存进便签，刷新页面后依然在。
 - **面板随手记**：会话标题栏右上角的便签图标（**在这一排按钮的最左边**，其它插件的按钮在它右边）打开悬浮面板，直接写、直接存；也支持 `Alt+Shift+N`。
 - **分区**：收件箱 + 自定义分区，便签可在分区之间拖动归档，也可拖动排序、拖进回收站。
+- **优先级**：每张便签卡片头部有一个优先级胶囊（紧急 / 高 / 普通 / 低，默认「普通」），点一下即可改；卡片顶部按颜色区分（红 / 蓝 / 灰 / 浅灰），工具栏可按优先级筛选，排序也可从「时间」切成「优先级」，默认仍是时间排序。
+- **待办清单**：每张便签都能加勾选项（回车连续添加、点勾完成、右上角一键清空已完成）。面板顶部的「待办」标签页把所有便签里的待办聚合在一起，按优先级分组、按所属便签聚合，还能搜索与「隐藏已完成」。
+- **便签评论**：卡片底部点「评论」打开详情浮层，可以像飞书 / 企业微信那样在便签下面留言（Enter 发送、Shift+Enter 换行），评论以气泡线程展示、可删除；卡片上会显示评论数。详情浮层同时给出正文、待办清单、优先级和评论，窗口宽度小时也不会挤。
 - **回收站**：删除是软删除，可恢复、可彻底删除、可清空。
 - **发回对话**：任意便签「插入到输入框」，内容进入当前会话的 composer（纯文本；富内容可先「复制」）；无可用会话时自动退化为复制到剪贴板。
 - **拖回对话**：把便签卡片直接拖到输入框上，松手即插入（和拖放图片 / 文件的动手感一致）：输入框会亮起蓝色落点框并提示「松开鼠标，把便签插入输入框」，内容按 Markdown 还原表格、代码块、列表、引用，图片变成 `![说明](地址)`。
@@ -68,14 +75,14 @@ plugin_manager action=install_bundle target=<本仓库的绝对路径>
 
 ```powershell
 node build.mjs            # 拼接 src/*.js -> client.js
-node tests/smoke.mjs      # jsdom 集成冒烟测试（83 项）
+node tests/smoke.mjs      # jsdom 集成冒烟测试（105 项）
 node tests/host.mjs       # Host 半：数据路由 / 文件落盘 / 损坏恢复 / 目录迁移认领（39 项）
 node tests/sync.mjs       # 浏览器 ⇄ 文件 端到端同步（18 项）
-node tests/browser.mjs    # 真实 Chrome 端到端自测（27 项）
+node tests/browser.mjs    # 真实 Chrome 端到端自测（31 项）
 node tests/browser.mjs --dark
 ```
 
-`tests/visual/index.html` 是可视化调试台（`?theme=dark`、`?scene=trash|search|empty`、`?chip=1`、`?surface=1`、`?drop=1`、`?float=1`、`?panel=520x800`、`?panel=0` 隐藏面板只留对话、`?debugcss=1`、`?selftest=1`、`?diag=1`、`?host=1` 用假 fetch 模拟已落盘）。`tests/visual/vendor/` 里是离线运行所需的 React 18 UMD 构建与 DSH 的 `design-platform.css` 副本，只为调试台服务，不参与插件构建。
+`tests/visual/index.html` 是可视化调试台（`?theme=dark`、`?scene=trash|search|empty|tasks|sheet`、`?chip=1`、`?surface=1`、`?drop=1`、`?float=1`、`?panel=520x800`、`?panel=0` 隐藏面板只留对话、`?debugcss=1`、`?selftest=1`、`?diag=1`、`?host=1` 用假 fetch 模拟已落盘）。`tests/visual/vendor/` 里是离线运行所需的 React 18 UMD 构建与 DSH 的 `design-platform.css` 副本，只为调试台服务，不参与插件构建。
 
 想看**真实**的落盘状态，用 `node tests/visual/serve.mjs --port=8791` 起一个把 `index.html` 与真实数据路由一起挂上的小服务器，再打开 `http://127.0.0.1:8791/index.html?panel=520x800`：页面走真正的 HTTP，底部状态药丸会显示「已保存」，`notes.json` 落在该次启动的临时 profile 目录里。
 
@@ -132,4 +139,4 @@ node tests/visual/cdp-shot.mjs `
 
 ## 许可与反馈
 
-MIT。问题与建议请提到 [Issues](https://github.com/guangdang/dsh-sticky-board/issues)。
+MIT。问题与建议请提到 [Issues](https://github.com/kuangdang123/dsh-sticky-board/issues)。

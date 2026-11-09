@@ -71,6 +71,19 @@ function frame() {
     setter.call(node, value)
     node.dispatchEvent(new Event('input', { bubbles: true }))
   }
+  /* React listens to `change` on <select>, so both events are dispatched. */
+  function selectValue(node, value) {
+    assert(node, 'select node missing')
+    var setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+    setter.call(node, value)
+    node.dispatchEvent(new Event('input', { bubbles: true }))
+    node.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  function noteById(id) {
+    var notes = snapshot().notes
+    for (var i = 0; i < notes.length; i += 1) if (notes[i].id === id) return notes[i]
+    return null
+  }
   function panelOpen() { return !!snapshot().ui.open }
   function openPanel() {
     if (!panelOpen()) store.actions.setOpen(true)
@@ -653,6 +666,107 @@ function frame() {
       assert(note.kind === 'image', 'image note kind was ' + note.kind)
       assert(note.html.indexOf('<img') >= 0, 'image note has no <img>: ' + note.html.slice(0, 120))
       assert(note.html.indexOf('chart.png') >= 0, 'image note lost its alt text')
+    })
+
+    /* ------------------------------------------------------- priorities */
+    await step('priority can be set, sorted and filtered from the board', async function () {
+      openPanel()
+      await sleep(120)
+      var select = q('.dsn-stream .dsn-note .dsn-prio-select')
+      assert(select, 'priority select missing on the card')
+      var card = select.closest('.dsn-note')
+      var id = card.getAttribute('data-note-id')
+      selectValue(select, 'urgent')
+      await sleep(140)
+      var note = noteById(id)
+      assert(note && note.priority === 'urgent', 'priority stayed at ' + (note && note.priority) + ' for ' + id)
+      assert(card.querySelector('.dsn-prio--urgent'), 'the pill did not adopt the urgent style')
+      store.actions.setSort('priority')
+      await sleep(140)
+      assert(cards()[0].getAttribute('data-note-id') === id, 'priority sort did not lift the urgent note')
+      store.actions.setPriorityFilter('urgent')
+      await sleep(140)
+      var visible = cards().map(function (node) { return node.getAttribute('data-note-id') })
+      assert(visible.length >= 1, 'priority filter hid every note')
+      for (var i = 0; i < visible.length; i += 1) {
+        assert(noteById(visible[i]).priority === 'urgent', 'filter let a non-urgent note through')
+      }
+      store.actions.setPriorityFilter('all')
+      store.actions.setSort('time')
+      await sleep(140)
+    })
+
+    /* ------------------------------------------------------- checklist */
+    await step('checklist items can be added, ticked and counted', async function () {
+      openPanel()
+      await sleep(100)
+      var card = cards()[0]
+      var id = card.getAttribute('data-note-id')
+      store.actions.setDetail(id)
+      await sleep(180)
+      var sheet = q('.dsn-sheet')
+      assert(sheet, 'detail sheet did not open')
+      var input = q('.dsn-sheet .dsn-task-input')
+      assert(input, 'task input missing in the sheet')
+      setInput(input, '第一项待办')
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      await sleep(160)
+      var note = noteById(id)
+      assert(note.tasks.length === 1, 'task was not added (' + note.tasks.length + ')')
+      assert(note.tasks[0].text === '第一项待办', 'task text is ' + note.tasks[0].text)
+      var check = q('.dsn-sheet .dsn-task-check')
+      assert(check, 'task checkbox missing')
+      click(check)
+      await sleep(160)
+      assert(noteById(id).tasks[0].done === true, 'task did not become done')
+      assert(q('.dsn-sheet .dsn-tasks-progress').textContent.indexOf('1/1') >= 0, 'progress label is wrong')
+      var closed = byLabel(t('detail.close'))[0]
+      assert(closed, 'sheet close button missing')
+      click(closed)
+      await sleep(160)
+      var chip = q('.dsn-stream .dsn-note[data-note-id="' + id + '"] .dsn-note-meta .dsn-chip--warn')
+      assert(chip, 'the card should surface its finished checklist')
+      assert(chip.textContent.indexOf('1/1') >= 0, 'card chip lost the progress: ' + chip.textContent)
+    })
+
+    /* -------------------------------------------------------- comments */
+    await step('comments are stored, rendered and counted', async function () {
+      openPanel()
+      await sleep(100)
+      var card = cards()[0]
+      var id = card.getAttribute('data-note-id')
+      store.actions.setDetail(id)
+      await sleep(180)
+      var box = q('.dsn-sheet .dsn-comment-input')
+      assert(box, 'comment box missing')
+      setInput(box, '这条便签说得对')
+      var send = q('.dsn-sheet .dsn-comment-formbar .dsn-btn-primary')
+      assert(send, 'comment send button missing')
+      click(send)
+      await sleep(200)
+      var note = noteById(id)
+      assert(note.comments.length === 1, 'comment was not stored (' + note.comments.length + ')')
+      assert(note.comments[0].text.indexOf('说得对') >= 0, 'comment text lost')
+      var rendered = qa('.dsn-sheet .dsn-comment')
+      assert(rendered.length === 1, 'comment row missing in the thread')
+      assert(rendered[0].textContent.indexOf('说得对') >= 0, 'rendered comment lost its text')
+      click(byLabel(t('detail.close'))[0])
+      await sleep(160)
+      var chip = q('.dsn-stream .dsn-note[data-note-id="' + id + '"] .dsn-note-meta button.dsn-chip--btn:last-of-type')
+      assert(chip, 'comment chip missing on the card')
+      assert(chip.textContent.indexOf('1') >= 0, 'comment chip should show the count: ' + chip.textContent)
+    })
+
+    /* ------------------------------------------------------- tasks view */
+    await step('the to-do tab aggregates open items', async function () {
+      store.actions.setView('tasks')
+      await sleep(200)
+      var view = q('.dsn-tasksview')
+      assert(view, 'tasks view did not render')
+      assert(qa('.dsn-tasksview .dsn-task').length >= 1, 'tasks view listed no checklist rows')
+      assert(q('.dsn-tasksview .dsn-tasksgroup'), 'tasks view has no note group')
+      store.actions.setView('board')
+      await sleep(160)
     })
 
     /* --------------------------------------------------------------- PiP */
