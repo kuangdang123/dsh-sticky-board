@@ -75,7 +75,7 @@ node tests/browser.mjs    # 真实 Chrome 端到端自测（27 项）
 node tests/browser.mjs --dark
 ```
 
-`tests/visual/index.html` 是可视化调试台（`?theme=dark`、`?scene=trash|search|empty`、`?chip=1`、`?surface=1`、`?drop=1`、`?float=1`、`?panel=520x800`、`?panel=0` 隐藏面板只留对话、`?debugcss=1`、`?selftest=1`、`?diag=1`、`?host=1` 用假 fetch 模拟已落盘）。
+`tests/visual/index.html` 是可视化调试台（`?theme=dark`、`?scene=trash|search|empty`、`?chip=1`、`?surface=1`、`?drop=1`、`?float=1`、`?panel=520x800`、`?panel=0` 隐藏面板只留对话、`?debugcss=1`、`?selftest=1`、`?diag=1`、`?host=1` 用假 fetch 模拟已落盘）。`tests/visual/vendor/` 里是离线运行所需的 React 18 UMD 构建与 DSH 的 `design-platform.css` 副本，只为调试台服务，不参与插件构建。
 
 想看**真实**的落盘状态，用 `node tests/visual/serve.mjs --port=8791` 起一个把 `index.html` 与真实数据路由一起挂上的小服务器，再打开 `http://127.0.0.1:8791/index.html?panel=520x800`：页面走真正的 HTTP，底部状态药丸会显示「已保存」，`notes.json` 落在该次启动的临时 profile 目录里。
 
