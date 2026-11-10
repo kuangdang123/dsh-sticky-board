@@ -304,7 +304,13 @@ try {
 } catch (error) { chipError = error }
 await new Promise((resolve) => setTimeout(resolve, 300))
 check('selection handling does not throw', chipError === null, chipError && String(chipError))
-const chipButton = window.document.querySelector('.dsn-chip-layer button')
+let chipButton = null
+// The chip shows on a short debounce after the gesture settles; jsdom timers can
+// lag behind the fixed wait, so poll instead of betting on one sleep.
+for (let attempt = 0; attempt < 15 && !chipButton; attempt += 1) {
+  chipButton = window.document.querySelector('.dsn-chip-layer button')
+  if (!chipButton) await new Promise((resolve) => setTimeout(resolve, 100))
+}
 check('fallback chip appears for text outside the chat flow',
   !!chipButton && chipButton.style.display !== 'none',
   chipButton ? `display=${chipButton.style.display}` : 'no chip layer')
@@ -937,6 +943,41 @@ check('quoting hands the note text to the host quote path', quotedPayload === '�
 DSN.bridge.get = realBridgeGet
 DSN.bridge.quote = realBridgeQuote
 store.actions.purgeNote(originNoteId)
+
+// ------------------------- file-preview origin + fenced quote ---------------
+const fileProbe = DSN.normalizeOrigin({ file: { path: ' docs/a.md ', line: '32', endLine: 33 } })
+check('a file origin is kept on its own',
+  !!fileProbe && !!fileProbe.file && fileProbe.file.path === 'docs/a.md'
+    && fileProbe.file.line === 32 && fileProbe.file.endLine === 33,
+  JSON.stringify(fileProbe))
+check('a file origin without a path is dropped', DSN.normalizeOrigin({ file: { line: 3 } }) === null)
+const fileNoteId = store.actions.addNote({
+  html: '<p>跨游戏显式白名单</p>',
+  text: '跨游戏显式白名单',
+  origin: { file: { path: 'docs/plan.md', line: 32, endLine: 32 } },
+})
+const fileNote = noteOf(fileNoteId)
+check('a file-preview note stores its file coordinate',
+  !!fileNote && !!fileNote.origin && !!fileNote.origin.file
+    && fileNote.origin.file.path === 'docs/plan.md' && fileNote.origin.file.line === 32,
+  JSON.stringify(fileNote && fileNote.origin))
+const realBridgeInsert = DSN.bridge.insert
+let fencedPayload = ''
+DSN.bridge.insert = (html, text) => { fencedPayload = String(text); return Promise.resolve(true) }
+flushSync(() => {})
+const fileCard = window.document.querySelector('[data-note-id="' + fileNoteId + '"]')
+const fileQuoteAction = fileCard
+  ? Array.prototype.slice.call(fileCard.querySelectorAll('button'))
+    .filter((node) => node.getAttribute('aria-label') === quoteLabel)[0]
+  : null
+if (fileQuoteAction) {
+  flushSync(() => { fileQuoteAction.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+}
+check('quoting a file note inserts the fenced snippet',
+  fencedPayload === '```docs/plan.md:32\n跨游戏显式白名单\n```',
+  JSON.stringify(fencedPayload))
+DSN.bridge.insert = realBridgeInsert
+store.actions.purgeNote(fileNoteId)
 
 // ------------------------------ the to-do view adds, ticks and removes -----
 const toDoLabels = ctx.locale.bind()
