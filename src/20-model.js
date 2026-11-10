@@ -104,20 +104,36 @@ function normalizeCommentList(raw) {
  * a composer exactly the way 引用文本 does (the quote body is plain text, the
  * position is only ours to remember).
  */
+function normalizeOriginFile(item) {
+  if (!item || typeof item !== 'object') return null
+  var path = typeof item.path === 'string' ? item.path.trim().slice(0, 400) : ''
+  if (!path) return null
+  function lineOf(value) {
+    var line = Number(value)
+    return isFinite(line) && line > 0 ? Math.round(line) : null
+  }
+  var line = lineOf(item.line)
+  var endLine = lineOf(item.endLine)
+  if (line !== null && endLine !== null && endLine < line) endLine = line
+  return { path: path, line: line, endLine: line === null ? null : endLine === null ? line : endLine }
+}
+
 function normalizeOrigin(item) {
   if (!item || typeof item !== 'object') return null
   var sessionId = typeof item.sessionId === 'string' && item.sessionId ? item.sessionId : null
   var nodeKey = typeof item.nodeKey === 'string' && item.nodeKey ? item.nodeKey : null
   var anchorKey = typeof item.anchorKey === 'string' && item.anchorKey ? item.anchorKey : null
   var turn = Number(item.turn)
+  var file = normalizeOriginFile(item.file)
   var origin = {
     sessionId: sessionId,
     sessionTitle: typeof item.sessionTitle === 'string' ? item.sessionTitle.slice(0, 120) : '',
     turn: isFinite(turn) && turn >= 0 ? Math.round(turn) : null,
     nodeKey: nodeKey,
     anchorKey: anchorKey,
+    file: file,
   }
-  if (!origin.sessionId && !origin.nodeKey && !origin.anchorKey && origin.turn === null) return null
+  if (!origin.sessionId && !origin.nodeKey && !origin.anchorKey && origin.turn === null && !file) return null
   return origin
 }
 

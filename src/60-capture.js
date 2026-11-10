@@ -153,7 +153,8 @@
       }
       return value || null
     }
-    var turn = Number(read('data-chat-turn'))
+    var turnRaw = read('data-chat-turn')
+    var turn = turnRaw === null ? NaN : Number(turnRaw)
     var seat = {
       nodeKey: read('data-chat-node-key'),
       anchorKey: read('data-chat-anchor-key'),
@@ -161,6 +162,75 @@
     }
     if (!seat.nodeKey && !seat.anchorKey && seat.turn === null) return null
     return seat
+  }
+
+  /**
+   * File-preview coordinate of a selection. The sidebar preview stamps its frame
+   * (`data-document-preview`, `data-textpreview-body`, `data-code-preview`,
+   * `data-textpreview-plain`) and its header carries `[data-textpreview-path]`
+   * whose `title` is the whole workspace path. Code and plain-text previews keep
+   * their source lines in the DOM (`.line` spans / `data-textpreview-line`), so
+   * the line range is measured from the selection's own range. A rendered
+   * Markdown body has no source mapping, so those notes get the path only.
+   */
+  function fileOriginOf(element, range) {
+    if (!element || typeof element.closest !== 'function') return null
+    var frame = null
+    try {
+      frame = element.closest('[data-document-preview], [data-textpreview-body], [data-code-preview], [data-textpreview-plain]')
+    } catch (error) {
+      DSN.log('file preview lookup failed', error)
+      return null
+    }
+    if (!frame) return null
+    // `closest` returns the NEAREST of the listed selectors, which for a code or
+    // plain-text body is the inner body node. The path label lives in the frame
+    // header, one level up, so the lookup scope is the enclosing frame.
+    var scope = frame
+    try {
+      scope = element.closest('[data-document-preview], [data-textpreview-body]') || frame
+    } catch (error) {
+      scope = frame
+    }
+    var path = ''
+    try {
+      var label = scope.querySelector('[data-textpreview-path]')
+        || frame.querySelector('[data-textpreview-path]')
+      if (label) path = label.getAttribute('title') || label.textContent || ''
+    } catch (error) {
+      path = ''
+    }
+    path = asText(path).trim()
+    if (!path) return null
+    var box = null
+    try {
+      box = element.closest('[data-code-preview] [data-code-block-content], [data-textpreview-plain] pre, [data-textpreview-plain]')
+    } catch (error) {
+      box = null
+    }
+    function lineAt(container, node, offset) {
+      if (!container || !node || !range) return null
+      try {
+        var probe = document.createRange()
+        probe.setStart(container, 0)
+        probe.setEnd(node, offset)
+        return probe.toString().split('\n').length
+      } catch (error) {
+        return null
+      }
+    }
+    var line = null
+    var endLine = null
+    if (box) {
+      line = lineAt(box, range.startContainer, range.startOffset)
+      endLine = lineAt(box, range.endContainer, range.endOffset)
+      var holder = element.closest ? element.closest('[data-textpreview-line]') : null
+      if (holder && line === null) {
+        var stamped = Number(holder.getAttribute('data-textpreview-line'))
+        if (isFinite(stamped) && stamped > 0) line = endLine = Math.round(stamped)
+      }
+    }
+    return { path: path, line: line, endLine: endLine }
   }
 
   function readDocumentSelection() {
@@ -211,7 +281,7 @@
     } catch (error) {
       DSN.log('selection rect failed', error)
     }
-    return { text: text, html: html, rect: rect, seat: seatOf(anchorElement) }
+    return { text: text, html: html, rect: rect, seat: seatOf(anchorElement), file: fileOriginOf(anchorElement, range) }
   }
 
   /* ---------------------------- chip store -------------------------- */
@@ -486,6 +556,7 @@
         }
       }
       var seat = info && info.seat ? info.seat : null
+      var file = info && info.file ? info.file : null
       var origin = null
       if (typeof DSN.normalizeOrigin === 'function') {
         origin = DSN.normalizeOrigin({
@@ -494,6 +565,7 @@
           turn: seat ? seat.turn : null,
           nodeKey: seat ? seat.nodeKey : null,
           anchorKey: seat ? seat.anchorKey : null,
+          file: file,
         })
       }
       var noteId = store.actions.addNote({ html: html, text: text, source: source || null, origin: origin })
@@ -703,8 +775,10 @@
         var info = readDocumentSelection()
         // The chat flow opens its own selection surface and that surface carries
         // our actions, so a floating chip there would only cover it. Anywhere
-        // else the chip is the way in.
-        if (!info || !info.rect || surfaceActive()) {
+        // else the chip is the way in. A file-preview selection always keeps the
+        // chip: the preview is not a chat source, so the flow never claims it.
+        var inFile = !!(info && info.file)
+        if (!info || !info.rect || (surfaceActive() && !inFile)) {
           hideChip()
           return
         }
