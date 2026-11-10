@@ -16,7 +16,7 @@ A sticky-note board for the DeepSeek Harness Web GUI: capture something from a c
 - **Trash.** Deleting is soft: restore, delete permanently, or empty the trash.
 - **Priorities.** Every card carries a priority pill (urgent / high / normal / low, normal by default); clicking it opens a themed menu. Cards are colour-coded, the toolbar can filter by priority, and sorting can switch from time to priority while time stays the default.
 - **Themed dropdowns.** Sorting, the priority filter and the per-card priority picker share the panel's own design tokens: a popover portalled to `body` (so the panel never clips it) with ↑ / ↓ / Enter / Esc and click-outside handling, instead of a native `select`.
-- **To-do lists.** Any note can hold a checklist (Enter adds another item, ticking completes it, one click clears the finished ones). The **To-do** tab aggregates every open item across notes, grouped by note and sorted by priority, with search and a hide-finished switch.
+- **To-do lists.** Any note can hold a checklist (Enter adds another item, ticking completes it, one click clears the finished ones). The **To-do** tab aggregates every open item across notes, grouped by note and sorted by priority — and it is fully operable there: tick, delete, or add to any group, and when nothing is pending yet the empty state takes a first item and files it into a new **To-dos** note. Search and a hide-finished switch are still there.
 - **Comments on a note.** The comment chip at the foot of a card opens a detail sheet with the body, the checklist, the priority and a Feishu-style comment thread (Enter sends, Shift+Enter breaks the line); comments can be removed and the card shows their count.
 - **Send back to a conversation.** "Insert into composer" puts the note into the current session's composer (plain text); without an active session it falls back to the clipboard.
 - **Quote back into the composer.** The quote action on a note card inserts the note's text through the host's own quote path — the same one the built-in "Quote text" action uses — so it arrives as a real quote and is sent as a Markdown blockquote. Notes captured from a conversation also keep a hidden origin (session, turn and chat-node coordinates) that is never rendered; quoting one from another conversation adds a hint about where it came from.
@@ -60,10 +60,10 @@ On page load the client GETs `/dsh-sticky-board/data` and merges the file with t
 
 ```sh
 node build.mjs          # concatenate src/*.js -> client.js
-node tests/smoke.mjs    # jsdom integration smoke test (145 checks)
+node tests/smoke.mjs    # jsdom integration smoke test (155 checks)
 node tests/host.mjs     # Host half: route, file writes, corruption recovery, directory adoption (39 checks)
 node tests/sync.mjs     # browser <-> file end-to-end sync (18 checks)
-node tests/browser.mjs  # real Chrome end-to-end self-test (35 checks, light and dark)
+node tests/browser.mjs  # real Chrome end-to-end self-test (36 checks, light and dark)
 node tests/browser.mjs --dark
 ```
 
