@@ -938,6 +938,70 @@ DSN.bridge.get = realBridgeGet
 DSN.bridge.quote = realBridgeQuote
 store.actions.purgeNote(originNoteId)
 
+// ------------------------------ the to-do view adds, ticks and removes -----
+const toDoLabels = ctx.locale.bind()
+store.getSnapshot().notes.forEach((note) => {
+  (note.tasks || []).forEach((task) => store.actions.removeTask(note.id, task.id))
+})
+flushSync(() => { store.actions.setView('tasks') })
+const createSeedInput = window.document.querySelector('.dsn-tasksview .dsn-task-add--create .dsn-task-input')
+check('empty to-do view offers a way to create a list', !!createSeedInput,
+  window.document.querySelector('.dsn-tasksview')
+    ? window.document.querySelector('.dsn-tasksview').textContent.slice(0, 120)
+    : 'no tasks view')
+const noteCountBefore = store.getSnapshot().notes.length
+if (createSeedInput) {
+  flushSync(() => {
+    createSeedInput.value = '买牛奶'
+    createSeedInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+}
+const seededList = store.getSnapshot().notes.filter((note) => note.title === toDoLabels('tasks.listTitle'))[0]
+check('creating a to-do from the empty view makes a list note',
+  store.getSnapshot().notes.length === noteCountBefore + 1 && !!seededList,
+  store.getSnapshot().notes.filter((note) => note.title === toDoLabels('tasks.listTitle')).length + ' list notes')
+check('the new list note holds the first to-do',
+  !!seededList && seededList.tasks.length === 1 && seededList.tasks[0].text === '买牛奶',
+  seededList && JSON.stringify(seededList.tasks))
+const groupAddInput = window.document.querySelector('.dsn-tasksgroup .dsn-task-add .dsn-task-input')
+check('each to-do group offers its own add input', !!groupAddInput)
+if (groupAddInput && seededList) {
+  flushSync(() => {
+    groupAddInput.value = '再买面包'
+    groupAddInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+}
+const grownList = store.getSnapshot().notes.filter((note) => note.id === (seededList || {}).id)[0]
+check('adding from a group appends to that note', !!grownList && grownList.tasks.length === 2,
+  grownList && grownList.tasks.length)
+const toDoCheck = window.document.querySelector('.dsn-tasksgroup .dsn-task-check')
+check('to-do rows expose a checkbox', !!toDoCheck)
+if (toDoCheck) flushSync(() => { toDoCheck.click() })
+const tickedList = store.getSnapshot().notes.filter((note) => note.id === (seededList || {}).id)[0]
+check('ticking in the to-do view stores the change',
+  !!tickedList && tickedList.tasks.filter((task) => task.done).length === 1,
+  tickedList && tickedList.tasks.filter((task) => task.done).length)
+const toDoRemove = window.document.querySelector('.dsn-tasksgroup .dsn-task-remove')
+check('to-do rows expose a remove button', !!toDoRemove)
+if (toDoRemove) {
+  flushSync(() => { toDoRemove.dispatchEvent(new window.MouseEvent('click', { bubbles: true })) })
+}
+const shrunkList = store.getSnapshot().notes.filter((note) => note.id === (seededList || {}).id)[0]
+check('removing from the to-do view deletes the item', !!shrunkList && shrunkList.tasks.length === 1,
+  shrunkList && shrunkList.tasks.length)
+flushSync(() => { store.actions.setView('board') })
+const plainCardId = store.actions.addNote({ html: '<p>没有待办的卡片</p>', text: '没有待办的卡片' })
+flushSync(() => {})
+const plainCard = window.document.querySelector('[data-note-id="' + plainCardId + '"]')
+const taskChip = plainCard
+  ? Array.prototype.slice.call(plainCard.querySelectorAll('button.dsn-chip'))
+    .filter((node) => node.textContent.trim() === toDoLabels('task.chip'))[0]
+  : null
+check('a note without to-dos still shows the to-do chip', !!taskChip,
+  plainCard ? plainCard.textContent.slice(0, 100) : 'no card')
+store.actions.purgeNote(plainCardId)
+if (seededList) store.actions.purgeNote(seededList.id)
+
 // --------------------------------------- one way to add a section ----------
 const addLabel = ctx.locale.bind()('section.add')
 const addControls = Array.prototype.slice

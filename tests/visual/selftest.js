@@ -903,6 +903,48 @@ function frame() {
       await sleep(160)
     })
 
+    await step('the to-do tab can add, tick and remove items', async function () {
+      openPanel()
+      store.actions.setView('tasks')
+      await sleep(220)
+      var addInput = q('.dsn-tasksgroup .dsn-task-add .dsn-task-input')
+      assert(addInput, 'to-do add input missing')
+      var before = snapshot().notes.reduce(function (sum, note) {
+        return sum + (Array.isArray(note.tasks) ? note.tasks.length : 0)
+      }, 0)
+      setInput(addInput, '自测新增待办')
+      addInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+      await sleep(260)
+      var owner = snapshot().notes.filter(function (note) {
+        return (note.tasks || []).some(function (task) { return task.text === '自测新增待办' })
+      })[0]
+      assert(owner, 'the new to-do was not stored')
+      var after = snapshot().notes.reduce(function (sum, note) {
+        return sum + (Array.isArray(note.tasks) ? note.tasks.length : 0)
+      }, 0)
+      assert(after === before + 1, 'to-do count did not grow by one')
+      var row = qa('.dsn-tasksgroup .dsn-task').filter(function (node) {
+        return node.textContent.indexOf('自测新增待办') >= 0
+      })[0]
+      assert(row, 'the new to-do is not rendered')
+      click(q('input[type="checkbox"]', row))
+      await sleep(200)
+      var ticked = (noteById(owner.id).tasks || []).filter(function (task) {
+        return task.text === '自测新增待办'
+      })[0]
+      assert(ticked && ticked.done === true, 'ticking the row did not store done')
+      var row2 = qa('.dsn-tasksgroup .dsn-task').filter(function (node) {
+        return node.textContent.indexOf('自测新增待办') >= 0
+      })[0]
+      click(q('.dsn-task-remove', row2))
+      await sleep(200)
+      assert(!(noteById(owner.id).tasks || []).some(function (task) {
+        return task.text === '自测新增待办'
+      }), 'removing the row did not delete the item')
+      store.actions.setView('board')
+      await sleep(160)
+    })
+
     /* --------------------------------------------------------------- PiP */
     await step('PiP button degrades gracefully when unsupported', async function () {
       var supported = typeof window.documentPictureInPicture !== 'undefined'
