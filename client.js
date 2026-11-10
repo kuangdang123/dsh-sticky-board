@@ -6433,18 +6433,18 @@ function NoteCardInner(props) {
     body,
     h('div', { className: 'dsn-note-foot' },
       h('div', { className: 'dsn-note-meta' },
-        taskTotal
-          ? h('button', {
-              type: 'button',
-              className: 'dsn-chip dsn-chip--btn' + (taskDone === taskTotal ? ' dsn-chip--warn' : ''),
-              'data-dsn-nodrag': '1',
-              title: t('detail.open'),
-              onPointerDown: boardPrevent,
-              onClick: openDetail,
-            },
-              h(DSN.Icon, { name: 'check', size: 11 }),
-              h('span', null, t('task.progress', { done: taskDone, total: taskTotal })))
-          : null,
+        h('button', {
+          type: 'button',
+          className: 'dsn-chip dsn-chip--btn' + (taskTotal && taskDone === taskTotal ? ' dsn-chip--warn' : ''),
+          'data-dsn-nodrag': '1',
+          title: t('detail.open'),
+          onPointerDown: boardPrevent,
+          onClick: openDetail,
+        },
+          h(DSN.Icon, { name: taskTotal ? 'check' : 'plus', size: 11 }),
+          h('span', null, taskTotal
+            ? t('task.progress', { done: taskDone, total: taskTotal })
+            : t('task.chip'))),
         h('button', {
           type: 'button',
           className: 'dsn-chip dsn-chip--btn',
@@ -7003,6 +7003,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     'task.remove': '删除待办',
     'task.empty': '这条便签还没有待办',
     'task.note': '所属便签',
+    'task.chip': '待办',
     'comment.title': '评论',
     'comment.placeholder': '写下评论，Enter 发送，Shift+Enter 换行',
     'comment.send': '发送',
@@ -7020,6 +7021,9 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     'tasks.empty': '所有便签都没有未完成的待办',
     'tasks.summary': '{open} 条未完成 · {notes} 个便签',
     'tasks.emptySection': '这个分区还没有待办',
+    'tasks.emptyHint': '待办来自便签里的清单。在下面写一条，回车就会新建一个「待办清单」便签。',
+    'tasks.addFirst': '写一条待办，回车创建清单',
+    'tasks.listTitle': '待办清单',
   }, {
     'priority.urgent': 'Urgent',
     'priority.high': 'High',
@@ -7042,6 +7046,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     'task.remove': 'Remove to-do',
     'task.empty': 'This note has no to-dos yet',
     'task.note': 'Note',
+    'task.chip': 'To-do',
     'comment.title': 'Comments',
     'comment.placeholder': 'Write a comment — Enter sends, Shift+Enter breaks the line',
     'comment.send': 'Send',
@@ -7059,6 +7064,9 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     'tasks.empty': 'No open to-dos across all notes',
     'tasks.summary': '{open} open across {notes} notes',
     'tasks.emptySection': 'No to-dos in this section yet',
+    'tasks.emptyHint': 'To-dos live in the checklist of a note. Type one below and press Enter to create a to-do note.',
+    'tasks.addFirst': 'Type a to-do, press Enter',
+    'tasks.listTitle': 'To-dos',
   })
 
   DSN.PRIORITY_META = {
@@ -7593,6 +7601,60 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
   }
 
   /* ------------------------------------------------------------------ *
+   * one input that appends a to-do (or creates the list note)
+   * ------------------------------------------------------------------ */
+
+  DSN.TaskAdder = function TaskAdder(props) {
+    var React = DSN.React
+    var store = props.store
+    var t = props.t || DSN.fallbackT
+    var noteId = props.noteId || ''
+    var create = props.create === true
+    var inputRef = React.useRef(null)
+
+    function submit() {
+      var node = inputRef.current
+      if (!node) return
+      var value = String(node.value || '').trim()
+      if (!value) return
+      var target = noteId
+      if (!target && create) target = store.actions.addNote({ title: t('tasks.listTitle'), html: '', text: '' })
+      if (!target) return
+      if (!store.actions.addTask(target, value)) return
+      node.value = ''
+      node.focus()
+    }
+
+    function onKeyDown(event) {
+      if (event.key === 'Enter') {
+        extraPrevent(event)
+        extraStop(event)
+        submit()
+      } else if (event.key === 'Escape') {
+        extraStop(event)
+        if (inputRef.current) inputRef.current.value = ''
+      }
+    }
+
+    var placeholder = create ? t('tasks.addFirst') : t('task.placeholder')
+    return h('div', {
+      className: 'dsn-task-add' + (create ? ' dsn-task-add--create' : ''),
+      'data-dsn-nodrag': '1',
+    },
+      h(DSN.Icon, { name: 'plus', size: 12 }),
+      h('input', {
+        ref: inputRef,
+        className: 'dsn-task-input',
+        type: 'text',
+        placeholder: placeholder,
+        'aria-label': create ? t('tasks.addFirst') : t('task.add'),
+        spellCheck: false,
+        'data-dsn-nodrag': '1',
+        onKeyDown: onKeyDown,
+      }))
+  }
+
+  /* ------------------------------------------------------------------ *
    * aggregated to-do view
    * ------------------------------------------------------------------ */
 
@@ -7647,7 +7709,9 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
         h('div', { className: 'dsn-empty' },
           h('span', { className: 'dsn-empty-icon', 'aria-hidden': 'true' },
             h(DSN.Icon, { name: 'check', size: 20 })),
-          h('p', { className: 'dsn-empty-text' }, t('tasks.empty'))))
+          h('p', { className: 'dsn-empty-text' }, t('tasks.empty')),
+          h('p', { className: 'dsn-empty-hint' }, t('tasks.emptyHint'))),
+        h(DSN.TaskAdder, { store: store, t: t, create: true }))
     }
 
     return h('div', { className: 'dsn-tasksview', 'data-open-tasks': String(openCount) },
@@ -7679,8 +7743,21 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
                 'aria-label': row.task.text,
                 onChange: function () { store.actions.toggleTask(note.id, row.task.id) },
               }),
-              h('span', { className: 'dsn-task-text' }, row.task.text))
-          }))
+              h('span', { className: 'dsn-task-text', title: row.task.text }, row.task.text),
+              h('button', {
+                type: 'button',
+                className: 'dsn-task-remove',
+                'aria-label': t('task.remove'),
+                title: t('task.remove'),
+                tabIndex: -1,
+                onPointerDown: extraPrevent,
+                onClick: function (event) {
+                  extraStop(event)
+                  store.actions.removeTask(note.id, row.task.id)
+                },
+              }, h(DSN.Icon, { name: 'close', size: 11 })))
+          }),
+          h(DSN.TaskAdder, { key: 'add', store: store, t: t, noteId: note.id }))
       }))
   }
 
@@ -7826,6 +7903,17 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     '.dsn-tasksgroup-label { flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-weight: 600;',
     '  color: var(--dsw-alias-label-secondary, #6b7280); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '.dsn-tasksgroup-count { flex: 0 0 auto; font-size: 10.5px; color: var(--dsw-alias-label-tertiary, #adb2b8); }',
+    '.dsn-tasksgroup .dsn-task { padding-left: 2px; }',
+    '.dsn-tasksview .dsn-task-add { height: 30px; box-sizing: border-box; padding: 0 8px; border-radius: 8px;',
+    '  border: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));',
+    '  background: color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 2%, transparent); }',
+    '.dsn-tasksview .dsn-task-add:focus-within { border-color: var(--dsw-alias-state-business-primary, #4176e6);',
+    '  background: var(--dsw-alias-bg-layer-1, #ffffff); }',
+    '.dsn-tasks-empty-add { padding: 0 4px; }',
+    '.dsn-task-add--create { width: 100%; max-width: 320px; box-sizing: border-box; margin: 2px auto 0; padding: 0 8px; }',
+    '.dsn-task-add--create .dsn-task-input { font-size: 12px; }',
+    '.dsn-empty-hint { margin: 2px 0 0; font-size: 11px; line-height: 1.5; text-align: center;',
+    '  color: var(--dsw-alias-label-tertiary, #adb2b8); max-width: 260px; }',
     /* card meta chips */
     '.dsn-note-meta { display: flex; align-items: center; gap: 5px; padding: 2px 0 0; flex-wrap: wrap; }',
     '.dsn-chip--btn { border: 0; cursor: pointer; background: color-mix(in srgb, var(--dsw-alias-label-primary, #0f1115) 6%, transparent);',

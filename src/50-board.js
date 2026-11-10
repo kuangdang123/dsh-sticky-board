@@ -1283,18 +1283,18 @@ function NoteCardInner(props) {
     body,
     h('div', { className: 'dsn-note-foot' },
       h('div', { className: 'dsn-note-meta' },
-        taskTotal
-          ? h('button', {
-              type: 'button',
-              className: 'dsn-chip dsn-chip--btn' + (taskDone === taskTotal ? ' dsn-chip--warn' : ''),
-              'data-dsn-nodrag': '1',
-              title: t('detail.open'),
-              onPointerDown: boardPrevent,
-              onClick: openDetail,
-            },
-              h(DSN.Icon, { name: 'check', size: 11 }),
-              h('span', null, t('task.progress', { done: taskDone, total: taskTotal })))
-          : null,
+        h('button', {
+          type: 'button',
+          className: 'dsn-chip dsn-chip--btn' + (taskTotal && taskDone === taskTotal ? ' dsn-chip--warn' : ''),
+          'data-dsn-nodrag': '1',
+          title: t('detail.open'),
+          onPointerDown: boardPrevent,
+          onClick: openDetail,
+        },
+          h(DSN.Icon, { name: taskTotal ? 'check' : 'plus', size: 11 }),
+          h('span', null, taskTotal
+            ? t('task.progress', { done: taskDone, total: taskTotal })
+            : t('task.chip'))),
         h('button', {
           type: 'button',
           className: 'dsn-chip dsn-chip--btn',
