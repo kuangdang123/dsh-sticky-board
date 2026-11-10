@@ -2,7 +2,6 @@ url: https://github.com/kuangdang123/dsh-sticky-board
 name: kuangdang123/dsh-sticky-board
 category: ui
 icon: https://raw.githubusercontent.com/kuangdang123/dsh-sticky-board/main/assets/icon-180.png
-tarball: https://github.com/kuangdang123/dsh-sticky-board/releases/latest/download/dsh-sticky-board.tgz
 description:
   en: 'Sticky notes for the DSH Web GUI: save a chat selection, reply or image into categorized notes that keep tables, code and pictures, tag priorities, tick checklists and comment on them, then drag them back into any composer or out into floating windows (windows render and accept comments too).'
   zh: 'DSH Web UI 的便签插件：把对话里的选区、整条回复或图片存进分区便签（表格、代码、图片原样保留），带优先级、待办清单与便签评论，还能拖回任意输入框或拖出成独立悬浮窗口（窗口里同样能看和写评论）。'
