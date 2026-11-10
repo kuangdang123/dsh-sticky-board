@@ -1077,11 +1077,49 @@ function NoteCardInner(props) {
    * note's hidden `origin` only decides the toast wording: DSH quotes pure text,
    * so a note captured in another conversation still quotes fine here.
    */
+  /**
+   * Fenced-block form of a note captured from a file preview. DSH shows file
+   * snippets as ```path:line with the selected lines underneath, so a note that
+   * remembers its file inserts exactly that shape again.
+   */
+  function fileFence(origin, text) {
+    var file = origin && origin.file ? origin.file : null
+    if (!file || !file.path) return ''
+    var body = String(text == null ? '' : text).replace(/\s+$/, '')
+    if (!body) return ''
+    var info = file.path
+    if (file.line) info += ':' + file.line + (file.endLine && file.endLine !== file.line ? '-' + file.endLine : '')
+    return '```' + info + '\n' + body + '\n```'
+  }
+
   function quoteNote() {
     var target = bridge || DSN.bridge || null
     var text = note.text || ''
     if (!text && typeof DSN.htmlToText === 'function') text = DSN.htmlToText(note.html || '')
     if (!text) return
+    var origin = note.origin || null
+    var fence = fileFence(origin, text)
+    if (fence) {
+      var insert = DSN.bridge && typeof DSN.bridge.insert === 'function'
+        ? function () { return DSN.bridge.insert('', fence, t) }
+        : function () { return Promise.resolve(false) }
+      insert().then(function (ok) {
+        if (ok) {
+          DSN.toast(t('status.fileQuoted'), 'info')
+          return
+        }
+        DSN.copyRich('', fence).then(function (copied) {
+          DSN.toast(copied ? t('status.fileQuotedCopied') : t('status.copyFailed'), copied ? 'info' : 'error')
+        }, function (error) {
+          DSN.log('file snippet copy rejected', error)
+          DSN.toast(t('status.copyFailed'), 'error')
+        })
+      }, function (error) {
+        DSN.log('file snippet insert rejected', error)
+        DSN.toast(t('status.copyFailed'), 'error')
+      })
+      return
+    }
     var quoted = false
     try {
       if (target && typeof target.quote === 'function') quoted = target.quote(text) === true
@@ -1104,7 +1142,6 @@ function NoteCardInner(props) {
     } catch (error) {
       handle = null
     }
-    var origin = note.origin || null
     var elsewhere = !!(handle && handle.sessionId && origin && origin.sessionId && origin.sessionId !== handle.sessionId)
     if (elsewhere) {
       var name = origin.sessionTitle || '#' + String(origin.sessionId).slice(0, 6)

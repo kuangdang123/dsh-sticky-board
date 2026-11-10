@@ -360,6 +360,8 @@ DSN.zh = {
   'status.quoted': '已作为引用插入输入框',
   'status.quotedOther': '已插入引用（原文来自另一个会话：{name}）',
   'status.quotedCopied': '当前没有可用的输入框，已复制原文',
+  'status.fileQuoted': '已把文件片段插入输入框',
+  'status.fileQuotedCopied': '当前没有可用的输入框，已复制文件片段',
   'status.noSession': '当前没有可插入的会话，已复制到剪贴板',
 
   'sync.idle': '本地',
@@ -459,6 +461,8 @@ DSN.en = {
   'status.quoted': 'Quoted into the composer',
   'status.quotedOther': 'Quoted — the source lives in another conversation: {name}',
   'status.quotedCopied': 'No composer available — copied the text instead',
+  'status.fileQuoted': 'Inserted the file snippet into the composer',
+  'status.fileQuotedCopied': 'No composer available — copied the file snippet instead',
   'status.noSession': 'No chat to insert into — copied to the clipboard instead',
 
   'sync.idle': 'Local',
@@ -619,20 +623,36 @@ function normalizeCommentList(raw) {
  * a composer exactly the way 引用文本 does (the quote body is plain text, the
  * position is only ours to remember).
  */
+function normalizeOriginFile(item) {
+  if (!item || typeof item !== 'object') return null
+  var path = typeof item.path === 'string' ? item.path.trim().slice(0, 400) : ''
+  if (!path) return null
+  function lineOf(value) {
+    var line = Number(value)
+    return isFinite(line) && line > 0 ? Math.round(line) : null
+  }
+  var line = lineOf(item.line)
+  var endLine = lineOf(item.endLine)
+  if (line !== null && endLine !== null && endLine < line) endLine = line
+  return { path: path, line: line, endLine: line === null ? null : endLine === null ? line : endLine }
+}
+
 function normalizeOrigin(item) {
   if (!item || typeof item !== 'object') return null
   var sessionId = typeof item.sessionId === 'string' && item.sessionId ? item.sessionId : null
   var nodeKey = typeof item.nodeKey === 'string' && item.nodeKey ? item.nodeKey : null
   var anchorKey = typeof item.anchorKey === 'string' && item.anchorKey ? item.anchorKey : null
   var turn = Number(item.turn)
+  var file = normalizeOriginFile(item.file)
   var origin = {
     sessionId: sessionId,
     sessionTitle: typeof item.sessionTitle === 'string' ? item.sessionTitle.slice(0, 120) : '',
     turn: isFinite(turn) && turn >= 0 ? Math.round(turn) : null,
     nodeKey: nodeKey,
     anchorKey: anchorKey,
+    file: file,
   }
-  if (!origin.sessionId && !origin.nodeKey && !origin.anchorKey && origin.turn === null) return null
+  if (!origin.sessionId && !origin.nodeKey && !origin.anchorKey && origin.turn === null && !file) return null
   return origin
 }
 
@@ -6227,11 +6247,49 @@ function NoteCardInner(props) {
    * note's hidden `origin` only decides the toast wording: DSH quotes pure text,
    * so a note captured in another conversation still quotes fine here.
    */
+  /**
+   * Fenced-block form of a note captured from a file preview. DSH shows file
+   * snippets as ```path:line with the selected lines underneath, so a note that
+   * remembers its file inserts exactly that shape again.
+   */
+  function fileFence(origin, text) {
+    var file = origin && origin.file ? origin.file : null
+    if (!file || !file.path) return ''
+    var body = String(text == null ? '' : text).replace(/\s+$/, '')
+    if (!body) return ''
+    var info = file.path
+    if (file.line) info += ':' + file.line + (file.endLine && file.endLine !== file.line ? '-' + file.endLine : '')
+    return '```' + info + '\n' + body + '\n```'
+  }
+
   function quoteNote() {
     var target = bridge || DSN.bridge || null
     var text = note.text || ''
     if (!text && typeof DSN.htmlToText === 'function') text = DSN.htmlToText(note.html || '')
     if (!text) return
+    var origin = note.origin || null
+    var fence = fileFence(origin, text)
+    if (fence) {
+      var insert = DSN.bridge && typeof DSN.bridge.insert === 'function'
+        ? function () { return DSN.bridge.insert('', fence, t) }
+        : function () { return Promise.resolve(false) }
+      insert().then(function (ok) {
+        if (ok) {
+          DSN.toast(t('status.fileQuoted'), 'info')
+          return
+        }
+        DSN.copyRich('', fence).then(function (copied) {
+          DSN.toast(copied ? t('status.fileQuotedCopied') : t('status.copyFailed'), copied ? 'info' : 'error')
+        }, function (error) {
+          DSN.log('file snippet copy rejected', error)
+          DSN.toast(t('status.copyFailed'), 'error')
+        })
+      }, function (error) {
+        DSN.log('file snippet insert rejected', error)
+        DSN.toast(t('status.copyFailed'), 'error')
+      })
+      return
+    }
     var quoted = false
     try {
       if (target && typeof target.quote === 'function') quoted = target.quote(text) === true
@@ -6254,7 +6312,6 @@ function NoteCardInner(props) {
     } catch (error) {
       handle = null
     }
-    var origin = note.origin || null
     var elsewhere = !!(handle && handle.sessionId && origin && origin.sessionId && origin.sessionId !== handle.sessionId)
     if (elsewhere) {
       var name = origin.sessionTitle || '#' + String(origin.sessionId).slice(0, 6)
@@ -8093,7 +8150,8 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
       }
       return value || null
     }
-    var turn = Number(read('data-chat-turn'))
+    var turnRaw = read('data-chat-turn')
+    var turn = turnRaw === null ? NaN : Number(turnRaw)
     var seat = {
       nodeKey: read('data-chat-node-key'),
       anchorKey: read('data-chat-anchor-key'),
@@ -8101,6 +8159,75 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     }
     if (!seat.nodeKey && !seat.anchorKey && seat.turn === null) return null
     return seat
+  }
+
+  /**
+   * File-preview coordinate of a selection. The sidebar preview stamps its frame
+   * (`data-document-preview`, `data-textpreview-body`, `data-code-preview`,
+   * `data-textpreview-plain`) and its header carries `[data-textpreview-path]`
+   * whose `title` is the whole workspace path. Code and plain-text previews keep
+   * their source lines in the DOM (`.line` spans / `data-textpreview-line`), so
+   * the line range is measured from the selection's own range. A rendered
+   * Markdown body has no source mapping, so those notes get the path only.
+   */
+  function fileOriginOf(element, range) {
+    if (!element || typeof element.closest !== 'function') return null
+    var frame = null
+    try {
+      frame = element.closest('[data-document-preview], [data-textpreview-body], [data-code-preview], [data-textpreview-plain]')
+    } catch (error) {
+      DSN.log('file preview lookup failed', error)
+      return null
+    }
+    if (!frame) return null
+    // `closest` returns the NEAREST of the listed selectors, which for a code or
+    // plain-text body is the inner body node. The path label lives in the frame
+    // header, one level up, so the lookup scope is the enclosing frame.
+    var scope = frame
+    try {
+      scope = element.closest('[data-document-preview], [data-textpreview-body]') || frame
+    } catch (error) {
+      scope = frame
+    }
+    var path = ''
+    try {
+      var label = scope.querySelector('[data-textpreview-path]')
+        || frame.querySelector('[data-textpreview-path]')
+      if (label) path = label.getAttribute('title') || label.textContent || ''
+    } catch (error) {
+      path = ''
+    }
+    path = asText(path).trim()
+    if (!path) return null
+    var box = null
+    try {
+      box = element.closest('[data-code-preview] [data-code-block-content], [data-textpreview-plain] pre, [data-textpreview-plain]')
+    } catch (error) {
+      box = null
+    }
+    function lineAt(container, node, offset) {
+      if (!container || !node || !range) return null
+      try {
+        var probe = document.createRange()
+        probe.setStart(container, 0)
+        probe.setEnd(node, offset)
+        return probe.toString().split('\n').length
+      } catch (error) {
+        return null
+      }
+    }
+    var line = null
+    var endLine = null
+    if (box) {
+      line = lineAt(box, range.startContainer, range.startOffset)
+      endLine = lineAt(box, range.endContainer, range.endOffset)
+      var holder = element.closest ? element.closest('[data-textpreview-line]') : null
+      if (holder && line === null) {
+        var stamped = Number(holder.getAttribute('data-textpreview-line'))
+        if (isFinite(stamped) && stamped > 0) line = endLine = Math.round(stamped)
+      }
+    }
+    return { path: path, line: line, endLine: endLine }
   }
 
   function readDocumentSelection() {
@@ -8151,7 +8278,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
     } catch (error) {
       DSN.log('selection rect failed', error)
     }
-    return { text: text, html: html, rect: rect, seat: seatOf(anchorElement) }
+    return { text: text, html: html, rect: rect, seat: seatOf(anchorElement), file: fileOriginOf(anchorElement, range) }
   }
 
   /* ---------------------------- chip store -------------------------- */
@@ -8426,6 +8553,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
         }
       }
       var seat = info && info.seat ? info.seat : null
+      var file = info && info.file ? info.file : null
       var origin = null
       if (typeof DSN.normalizeOrigin === 'function') {
         origin = DSN.normalizeOrigin({
@@ -8434,6 +8562,7 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
           turn: seat ? seat.turn : null,
           nodeKey: seat ? seat.nodeKey : null,
           anchorKey: seat ? seat.anchorKey : null,
+          file: file,
         })
       }
       var noteId = store.actions.addNote({ html: html, text: text, source: source || null, origin: origin })
@@ -8643,8 +8772,10 @@ if (typeof DSN.addCss === 'function') DSN.addCss('board', BOARD_CSS)
         var info = readDocumentSelection()
         // The chat flow opens its own selection surface and that surface carries
         // our actions, so a floating chip there would only cover it. Anywhere
-        // else the chip is the way in.
-        if (!info || !info.rect || surfaceActive()) {
+        // else the chip is the way in. A file-preview selection always keeps the
+        // chip: the preview is not a chat source, so the flow never claims it.
+        var inFile = !!(info && info.file)
+        if (!info || !info.rect || (surfaceActive() && !inFile)) {
           hideChip()
           return
         }

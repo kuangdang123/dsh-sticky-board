@@ -551,6 +551,78 @@ function frame() {
       assert(liveNotes()[0].text.indexOf('跨对话复用') >= 0, 'saved note lost the selected text')
     })
 
+    /* ----------------------------------- file-preview selection → note */
+    await step('a file-preview selection saves its path and line', async function () {
+      openPanel()
+      await sleep(80)
+      var previewTexts = ['第一行', '跨游戏显式白名单，待语义审核', '第三行']
+      var frame = document.createElement('div')
+      frame.setAttribute('data-document-preview', 'code')
+      var header = document.createElement('div')
+      var label = document.createElement('span')
+      label.setAttribute('data-textpreview-path', '')
+      label.setAttribute('title', '_analysis/demo/docs/PLAN.md')
+      label.textContent = 'PLAN.md'
+      header.appendChild(label)
+      frame.appendChild(header)
+      var code = document.createElement('div')
+      code.setAttribute('data-code-preview', '')
+      var content = document.createElement('div')
+      content.setAttribute('data-code-block-content', '')
+      previewTexts.forEach(function (text, index) {
+        if (index > 0) content.appendChild(document.createTextNode('\n'))
+        var line = document.createElement('span')
+        line.className = 'line'
+        line.textContent = text
+        content.appendChild(line)
+      })
+      code.appendChild(content)
+      frame.appendChild(code)
+      document.body.appendChild(frame)
+      var lineNode = content.querySelectorAll('.line')[1]
+      var range = document.createRange()
+      range.selectNodeContents(lineNode)
+      var selection = window.getSelection()
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange', { bubbles: true }))
+      document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+      await sleep(360)
+      var chip = q('.dsn-chip-layer button') || q('.dsn-capture-chip')
+      assert(chip, 'capture chip did not appear for a file-preview selection')
+      var before = liveNotes().length
+      click(chip)
+      await sleep(320)
+      var notes = liveNotes()
+      assert(notes.length === before + 1, 'file-preview capture did not create a note')
+      var saved = notes.filter(function (note) { return note.text.indexOf('跨游戏显式白名单') >= 0 })[0]
+      assert(saved, 'the captured note is missing from the board')
+      assert(saved.origin && saved.origin.file, 'the stored note lost its file coordinate: '
+        + JSON.stringify(saved.origin))
+      assert(saved.origin.file.path === '_analysis/demo/docs/PLAN.md',
+        'file path mismatch: ' + JSON.stringify(saved.origin.file))
+      assert(saved.origin.file.line === 2 && saved.origin.file.endLine === 2,
+        'line mismatch: ' + JSON.stringify(saved.origin.file))
+      var card = q('[data-note-id="' + saved.id + '"]')
+      assert(card, 'the captured note card is missing')
+      var quoteAction = qa('button', card).filter(function (node) {
+        return node.getAttribute('aria-label') === t('note.quote')
+      })[0]
+      assert(quoteAction, 'the note card offers no quote action')
+      var input = document.querySelector('.fake-input')
+      var inputBefore = input.textContent || ''
+      click(quoteAction)
+      await sleep(320)
+      var inputAfter = input.textContent || ''
+      assert(inputAfter.length > inputBefore.length, 'the fenced snippet never reached the composer')
+      assert(inputAfter.indexOf('```_analysis/demo/docs/PLAN.md:2') >= 0,
+        'fenced info string missing: ' + JSON.stringify(inputAfter.slice(inputBefore.length)))
+      assert(inputAfter.indexOf('跨游戏显式白名单，待语义审核') >= 0, 'snippet body missing from the composer')
+      H.store.actions.purgeNote(saved.id)
+      frame.remove()
+      selection.removeAllRanges()
+    })
+
     /* -------------------------------- chat selection surface (quote + save) */
     await step('chat surface offers quote and save actions', async function () {
       openPanel()
